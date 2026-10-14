@@ -1,0 +1,46 @@
+name: Compilar Mod Portal y Gravity Gun
+
+on:
+  push:
+    branches: [ "*" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar codigo del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Configurar Gradle 8.8
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.8'
+
+      - name: Compilar archivo JAR del Mod
+        run: |
+          if [ ! -f "build.gradle" ]; then
+            FOUND_BUILD=$(find . -maxdepth 3 -name "build.gradle" | head -n 1)
+            if [ -n "$FOUND_BUILD" ]; then
+              SUBDIR=$(dirname "$FOUND_BUILD")
+              cp -r "$SUBDIR"/* .
+            fi
+          fi
+          gradle build --no-daemon
+
+      - name: Publicar archivo JAR listo para descargar
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mod-Portal-y-Gravity-Gun-JAR
+          path: |
+            build/libs/*.jar
+            !build/libs/*-sources.jar
+            !build/libs/*-dev.jar
+          if-no-files-found: error
