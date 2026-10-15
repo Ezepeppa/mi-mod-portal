@@ -3,6 +3,9 @@ package com.argon.portalgravity;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtDouble;
+import net.minecraft.nbt.NbtFloat;
+import net.minecraft.nbt.NbtList;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.server.MinecraftServer;
@@ -62,14 +65,14 @@ public class PortalManager {
         public final RegistryKey<World> dimension;
         public final Vec3d start;
         public final Vec3d end;
-        public final boolean isOrange;
+        public final int colorType; // 0 = Azul, 1 = Naranja, 2 = Esmeralda Arquitecto
         public int ticksLeft;
 
-        public ShotBeamFx(RegistryKey<World> dimension, Vec3d start, Vec3d end, boolean isOrange, int ticksLeft) {
+        public ShotBeamFx(RegistryKey<World> dimension, Vec3d start, Vec3d end, int colorType, int ticksLeft) {
             this.dimension = dimension;
             this.start = start;
             this.end = end;
-            this.isOrange = isOrange;
+            this.colorType = colorType;
             this.ticksLeft = ticksLeft;
         }
     }
@@ -77,8 +80,7 @@ public class PortalManager {
     public static class PlayerPortalPair {
         public PortalRecord bluePortal;
         public PortalRecord orangePortal;
-        // 0 = Normal (1.5 x 2.5), 1 = Colosal (3.2 x 4.2), 2 = Impulso Catapulta (1.6 x 2.6 + boost)
-        public int mode = 0;
+        public int mode = 0; // 0 = Normal, 1 = Colosal, 2 = Impulso
     }
 
     private static final Map<UUID, PlayerPortalPair> PLAYER_PORTALS = new HashMap<>();
@@ -98,7 +100,7 @@ public class PortalManager {
         String modeName = switch (pair.mode) {
             case 1 -> "Portal Colosal Gigante (3.2m x 4.2m)";
             case 2 -> "Portal de Impulso Catapulta (Momentum Boost)";
-            default -> "Portal Estandar (1.5m x 2.5m)";
+            default -> "Portal Estandar (1.55m x 2.55m)";
         };
         player.sendMessage(Text.literal("Modo de Portal Gun: ").formatted(Formatting.GRAY)
                 .append(Text.literal(modeName).formatted(Formatting.AQUA)), true);
@@ -125,7 +127,7 @@ public class PortalManager {
         ));
 
         Vec3d handStart = eyePos.add(lookVec.multiply(0.5)).subtract(0, 0.2, 0);
-        ACTIVE_SHOT_BEAMS.add(new ShotBeamFx(world.getRegistryKey(), handStart, hit.getPos(), isOrange, 6));
+        ACTIVE_SHOT_BEAMS.add(new ShotBeamFx(world.getRegistryKey(), handStart, hit.getPos(), isOrange ? 1 : 0, 7));
 
         if (hit.getType() != HitResult.Type.BLOCK) {
             world.playSound(null, player.getX(), player.getY(), player.getZ(),
@@ -152,16 +154,15 @@ public class PortalManager {
 
             BlockPos frontPos = hitPos.offset(face);
             double baseY = frontPos.getY();
-            // Alinear la base del óvalo exactamente al nivel del suelo si se dispara cerca del piso
             if (world.getBlockState(frontPos.down()).isSolidBlock(world, frontPos.down())) {
                 baseY = frontPos.getY();
             } else if (!world.getBlockState(frontPos.up()).isAir() && world.getBlockState(frontPos.down()).isAir()) {
                 baseY -= 1.0;
             }
             origin = new Vec3d(
-                    hitPos.getX() + 0.5 + normal.x * 0.52,
-                    baseY + (height * 0.5) - 0.05,
-                    hitPos.getZ() + 0.5 + normal.z * 0.52
+                    hitPos.getX() + 0.5 + normal.x * 0.54,
+                    baseY + (height * 0.5) - 0.02,
+                    hitPos.getZ() + 0.5 + normal.z * 0.54
             );
         } else {
             Direction horiz = player.getHorizontalFacing();
@@ -173,9 +174,9 @@ public class PortalManager {
             }
             axisW = axisH.crossProduct(normal).normalize();
             origin = new Vec3d(
-                    hitPos.getX() + 0.5 + normal.x * 0.52,
-                    hitPos.getY() + 0.5 + normal.y * 0.52,
-                    hitPos.getZ() + 0.5 + normal.z * 0.52
+                    hitPos.getX() + 0.5 + normal.x * 0.54,
+                    hitPos.getY() + 0.5 + normal.y * 0.54,
+                    hitPos.getZ() + 0.5 + normal.z * 0.54
             );
         }
 
@@ -224,7 +225,6 @@ public class PortalManager {
         removePortalEntity(server, pair.orangePortal);
 
         if (pair.bluePortal == null || pair.orangePortal == null) {
-            // Cuando solo hay 1 portal colocado, el renderizador 3D del cliente dibuja el óvalo mágico con vórtice cerrado
             return;
         }
 
@@ -236,23 +236,23 @@ public class PortalManager {
             String blueId = pair.bluePortal.forwardUuid.toString();
             String orangeId = pair.orangePortal.forwardUuid.toString();
 
-            // 1. Dar forma elíptica exacta de 64 lados que encaja milimétricamente con nuestro contorno mágico 3D
+            // 1. Dar forma elíptica exacta de 64 lados que encaja con nuestro óvalo 3D
             server.getCommandManager().executeWithPrefix(silentSource,
                     "execute as " + blueId + " run portal make_portal_round");
             server.getCommandManager().executeWithPrefix(silentSource,
                     "execute as " + orangeId + " run portal make_portal_round");
 
-            // 2. Calcular y aplicar la rotación 3D exacta R = E2 * E1^T para cada portal
+            // 2. Aplicar rotación 3D exacta R = E2 * E1^T y sincronizar con los clientes
             applyExactPortalRotation(server, silentSource, blueId, pair.bluePortal, pair.orangePortal);
             applyExactPortalRotation(server, silentSource, orangeId, pair.orangePortal, pair.bluePortal);
+
+            server.getCommandManager().executeWithPrefix(silentSource,
+                    "execute as " + blueId + " run portal set_portal_nbt {teleportable:true,isVisible:true,doRenderPlayer:true,hasCrossPortalCollision:true,adjustPositionAfterTeleport:true}");
+            server.getCommandManager().executeWithPrefix(silentSource,
+                    "execute as " + orangeId + " run portal set_portal_nbt {teleportable:true,isVisible:true,doRenderPlayer:true,hasCrossPortalCollision:true,adjustPositionAfterTeleport:true}");
         }
     }
 
-    /**
-     * Calcula la matriz de rotación ortogonal 3x3 que transforma la dirección de entrada en `from`
-     * (-axisW1, axisH1, -normal1) en la dirección de salida de `to` (+axisW2, +axisH2, +normal2),
-     * extrae eje-ángulo y lo aplica vía `portal set_portal_rotation`.
-     */
     private static void applyExactPortalRotation(MinecraftServer server, ServerCommandSource source,
                                                  String portalUuid, PortalRecord from, PortalRecord to) {
         Vec3d u1 = from.axisW.multiply(-1.0);
@@ -263,7 +263,6 @@ public class PortalManager {
         Vec3d v2 = to.axisH;
         Vec3d w2 = to.normal;
 
-        // R = u2 * u1^T + v2 * v1^T + w2 * w1^T
         double r00 = u2.x * u1.x + v2.x * v1.x + w2.x * w1.x;
         double r01 = u2.x * u1.y + v2.x * v1.y + w2.x * w1.y;
         double r02 = u2.x * u1.z + v2.x * v1.z + w2.x * w1.z;
@@ -285,7 +284,6 @@ public class PortalManager {
         if (angleDeg < 0.5) {
             angleDeg = 0.0;
         } else if (Math.abs(angleDeg - 180.0) < 0.5) {
-            // Caso de 180 grados: extraer el vector propio con valor +1 de (R + I)/2
             double xx = Math.max(0.0, (r00 + 1.0) * 0.5);
             double yy = Math.max(0.0, (r11 + 1.0) * 0.5);
             double zz = Math.max(0.0, (r22 + 1.0) * 0.5);
@@ -330,18 +328,33 @@ public class PortalManager {
         server.getCommandManager().executeWithPrefix(source, cmd);
     }
 
+    /**
+     * Inicializa y spawnea la entidad `immersive_portals:portal` usando `EntityType.loadEntityWithPassengers`
+     * con todos los campos requeridos en NBT (sin llamar a `writeNbt` sobre una instancia no inicializada).
+     */
     private static UUID spawnLinkedPortal(MinecraftServer server, PortalRecord from, PortalRecord to) {
         ServerWorld fromWorld = server.getWorld(from.dimension);
         if (fromWorld == null) return null;
 
-        EntityType<?> portalType = Registries.ENTITY_TYPE.get(IMM_PTL_ID);
-        Entity portal = portalType.create(fromWorld);
-        if (portal == null) return null;
-
-        portal.setPosition(from.origin.x, from.origin.y, from.origin.z);
-
         NbtCompound nbt = new NbtCompound();
-        portal.writeNbt(nbt);
+        nbt.putString("id", IMM_PTL_ID.toString());
+
+        NbtList posList = new NbtList();
+        posList.add(NbtDouble.of(from.origin.x));
+        posList.add(NbtDouble.of(from.origin.y));
+        posList.add(NbtDouble.of(from.origin.z));
+        nbt.put("Pos", posList);
+
+        NbtList motionList = new NbtList();
+        motionList.add(NbtDouble.of(0.0));
+        motionList.add(NbtDouble.of(0.0));
+        motionList.add(NbtDouble.of(0.0));
+        nbt.put("Motion", motionList);
+
+        NbtList rotList = new NbtList();
+        rotList.add(NbtFloat.of(0.0f));
+        rotList.add(NbtFloat.of(0.0f));
+        nbt.put("Rotation", rotList);
 
         nbt.putDouble("axisWX", from.axisW.x);
         nbt.putDouble("axisWY", from.axisW.y);
@@ -354,8 +367,7 @@ public class PortalManager {
         nbt.putDouble("height", from.height);
 
         nbt.putString("dimensionTo", to.dimension.getValue().toString());
-        // Destino ligeramente hacia afuera del otro portal para salir limpiamente sin tocar la pared trasera
-        Vec3d dest = to.origin.add(to.normal.multiply(0.08));
+        Vec3d dest = to.origin.add(to.normal.multiply(0.05));
         nbt.putDouble("destinationX", dest.x);
         nbt.putDouble("destinationY", dest.y);
         nbt.putDouble("destinationZ", dest.z);
@@ -366,10 +378,19 @@ public class PortalManager {
         nbt.putBoolean("hasCrossPortalCollision", true);
         nbt.putBoolean("doRenderPlayer", true);
         if (from.momentumBoost || to.momentumBoost) {
-            nbt.putDouble("motionAffinity", 0.35);
+            nbt.putDouble("motionAffinity", 0.38);
         }
 
-        portal.readNbt(nbt);
+        Entity portal = EntityType.loadEntityWithPassengers(nbt, fromWorld, entity -> {
+            entity.refreshPositionAndAngles(from.origin.x, from.origin.y, from.origin.z, 0.0f, 0.0f);
+            return entity;
+        });
+
+        if (portal == null) {
+            PortalGravityMod.LOGGER.error("No se pudo instanciar immersive_portals:portal");
+            return null;
+        }
+
         fromWorld.spawnEntity(portal);
         return portal.getUuid();
     }

@@ -36,10 +36,12 @@ public class GravityGunItem extends Item {
     @Override
     public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
         tooltip.add(Text.literal("Clic Derecho: ").formatted(Formatting.GRAY)
-                .append(Text.literal("Agarrar / Soltar con rayo de plasma 3D").formatted(Formatting.GOLD)));
+                .append(Text.literal("Agarrar / Soltar con colisiones reales").formatted(Formatting.GOLD)));
+        tooltip.add(Text.literal("Ruedita del Mouse (al sostener): ").formatted(Formatting.GRAY)
+                .append(Text.literal("Acercar / Alejar objeto").formatted(Formatting.GREEN)));
         tooltip.add(Text.literal("Clic Izquierdo: ").formatted(Formatting.GRAY)
-                .append(Text.literal("Lanzar a gran velocidad").formatted(Formatting.YELLOW)));
+                .append(Text.literal("Lanzar con alto daño de impacto").formatted(Formatting.YELLOW)));
         tooltip.add(Text.literal("Shift + Clic Derecho: ").formatted(Formatting.GRAY)
-                .append(Text.literal("Escudo Orbital (Agarra hasta 5 objetos en órbita)").formatted(Formatting.AQUA)));
+                .append(Text.literal("Escudo Orbital (5 objetos en órbita)").formatted(Formatting.AQUA)));
     }
 }

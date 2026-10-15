@@ -89,7 +89,7 @@ public class SingularityManager {
             target.setYaw(playerYaw);
 
             PortalManager.getActiveShotBeams().add(
-                    new PortalManager.ShotBeamFx(world.getRegistryKey(), playerOld.add(0, 1.0, 0), targetOld.add(0, 1.0, 0), false, 10)
+                    new PortalManager.ShotBeamFx(world.getRegistryKey(), playerOld.add(0, 1.0, 0), targetOld.add(0, 1.0, 0), 0, 10)
             );
             world.playSound(null, targetOld.x, targetOld.y, targetOld.z,
                     SoundEvents.ENTITY_ENDERMAN_TELEPORT, SoundCategory.PLAYERS, 1.0f, 0.75f);
@@ -97,13 +97,12 @@ public class SingularityManager {
             return;
         }
 
-        // Si no apunta a una entidad, hace un Blink (teletransporte relámpago) al punto mirado
         BlockHitResult hit = world.raycast(new RaycastContext(
                 eyePos, endPos, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, player));
         if (hit.getType() == HitResult.Type.BLOCK) {
             Vec3d dest = hit.getPos().add(Vec3d.of(hit.getSide().getVector()).multiply(0.8));
             PortalManager.getActiveShotBeams().add(
-                    new PortalManager.ShotBeamFx(world.getRegistryKey(), player.getPos().add(0, 1.0, 0), dest.add(0, 1.0, 0), true, 8)
+                    new PortalManager.ShotBeamFx(world.getRegistryKey(), player.getPos().add(0, 1.0, 0), dest.add(0, 1.0, 0), 1, 8)
             );
             player.teleport(world, dest.x, dest.y, dest.z, player.getYaw(), player.getPitch());
             world.playSound(null, dest.x, dest.y, dest.z,
@@ -135,7 +134,6 @@ public class SingularityManager {
                     Vec3d toCenter = v.position.subtract(e.getPos().add(0, e.getHeight() * 0.5, 0));
                     double dist = Math.max(0.5, toCenter.length());
                     Vec3d dir = toCenter.normalize();
-                    // Fuerza centrípeta + giro tangencial en espiral
                     Vec3d tangent = new Vec3d(-dir.z, 0.25, dir.x).normalize();
                     Vec3d swirlVel = dir.multiply(Math.min(0.65, 2.2 / dist)).add(tangent.multiply(0.35));
                     e.setVelocity(swirlVel);
@@ -144,7 +142,6 @@ public class SingularityManager {
                     e.setYaw(e.getYaw() + 18.0f);
                 }
             } else {
-                // Explosión final de onda gravitatoria al colapsar la singularidad
                 for (Entity e : nearby) {
                     Vec3d away = e.getPos().subtract(v.position).normalize().multiply(2.4).add(0, 0.85, 0);
                     e.setVelocity(away);

@@ -1,6 +1,7 @@
 {
   "item.portalgravity.portal_gun": "Pistola de Portales Arcana (Portal Gun)",
   "item.portalgravity.gravity_gun": "Cañón de Plasma Gravitatorio (Gravity Gun)",
+  "item.portalgravity.architect_gun": "Cañón Arquitecto Tecno-Mágico 3D",
   "item.portalgravity.singularity_orb": "Orbe de Singularidad Arcana",
-  "itemGroup.portalgravity.main": "Portal & Gravity Gun"
+  "itemGroup.portalgravity.main": "Portal, Gravity & Architect"
 }

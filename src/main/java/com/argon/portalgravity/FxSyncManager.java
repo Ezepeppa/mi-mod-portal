@@ -8,6 +8,7 @@ import net.minecraft.registry.RegistryKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
@@ -24,7 +25,14 @@ public class FxSyncManager {
 
             PacketByteBuf buf = PacketByteBufs.create();
 
-            // 1. Portales activos en la dimensión del jugador
+            // 0. Flag para saber si el cliente debe interceptar la ruedita del mouse (zoom en Gravity Gun o altura en Cañón Arquitecto)
+            List<GravityGunManager.HeldObjectState> myHeld = GravityGunManager.getPlayerHeld().get(player.getUuid());
+            boolean holdingGravityObj = (myHeld != null && !myHeld.isEmpty());
+            boolean interceptScroll = holdingGravityObj || ArchitectManager.isInterceptingScroll(player);
+            buf.writeBoolean(interceptScroll);
+            buf.writeDouble(GravityGunManager.getHoldDistance(player.getUuid()));
+
+            // 1. Portales activos en la dimensión
             List<PortalManager.PortalRecord> portals = new ArrayList<>();
             List<Boolean> portalLinkedFlags = new ArrayList<>();
             for (PortalManager.PlayerPortalPair pair : PortalManager.getPlayerPortals().values()) {
@@ -60,7 +68,11 @@ public class FxSyncManager {
                 buf.writeDouble(p.height);
             }
 
-            // 2. Rayos de plasma 3D de la Gravity Gun
+            // 2. Objetos sostenidos por Gravity Gun (incluyendo entityId para interpolación a 144 FPS en el cliente)
+            List<Integer> holderIds = new ArrayList<>();
+            List<Integer> heldEntityIds = new ArrayList<>();
+            List<Boolean> isBlockFlags = new ArrayList<>();
+            List<Integer> orbitSlots = new ArrayList<>();
             List<Vec3d> beamStarts = new ArrayList<>();
             List<Vec3d> beamEnds = new ArrayList<>();
             List<Float> beamRotations = new ArrayList<>();
@@ -78,6 +90,10 @@ public class FxSyncManager {
                     Entity e = world.getEntity(st.entityUuid);
                     if (e != null && e.isAlive()) {
                         Vec3d center = st.isBlockDisplay ? e.getPos() : e.getPos().add(0, e.getHeight() * 0.5, 0);
+                        holderIds.add(holder.getId());
+                        heldEntityIds.add(e.getId());
+                        isBlockFlags.add(st.isBlockDisplay);
+                        orbitSlots.add(st.orbitSlot);
                         beamStarts.add(gunMuzzle);
                         beamEnds.add(center);
                         beamRotations.add(st.rotY);
@@ -87,6 +103,10 @@ public class FxSyncManager {
 
             buf.writeInt(beamStarts.size());
             for (int i = 0; i < beamStarts.size(); i++) {
+                buf.writeInt(holderIds.get(i));
+                buf.writeInt(heldEntityIds.get(i));
+                buf.writeBoolean(isBlockFlags.get(i));
+                buf.writeInt(orbitSlots.get(i));
                 Vec3d s = beamStarts.get(i);
                 Vec3d e = beamEnds.get(i);
                 buf.writeDouble(s.x);
@@ -98,14 +118,14 @@ public class FxSyncManager {
                 buf.writeFloat(beamRotations.get(i));
             }
 
-            // 3. Rayos de disparo de portales / teletransporte cuántico
+            // 3. Haces de disparo
             List<PortalManager.ShotBeamFx> shots = new ArrayList<>();
             for (PortalManager.ShotBeamFx b : PortalManager.getActiveShotBeams()) {
                 if (b.dimension.equals(dim)) shots.add(b);
             }
             buf.writeInt(shots.size());
             for (PortalManager.ShotBeamFx b : shots) {
-                buf.writeBoolean(b.isOrange);
+                buf.writeInt(b.colorType);
                 buf.writeDouble(b.start.x);
                 buf.writeDouble(b.start.y);
                 buf.writeDouble(b.start.z);
@@ -114,7 +134,7 @@ public class FxSyncManager {
                 buf.writeDouble(b.end.z);
             }
 
-            // 4. Vórtices de Singularidad Arcana 3D
+            // 4. Vórtices de Singularidad
             List<SingularityManager.BlackHoleVortex> vortices = new ArrayList<>();
             for (SingularityManager.BlackHoleVortex v : SingularityManager.getActiveVortices()) {
                 if (v.dimension.equals(dim)) vortices.add(v);
@@ -125,6 +145,23 @@ public class FxSyncManager {
                 buf.writeDouble(v.position.y);
                 buf.writeDouble(v.position.z);
                 buf.writeInt(v.ticksRemaining);
+            }
+
+            // 5. Holograma 3D y rayos del Cañón Arquitecto para este jugador
+            ArchitectManager.ArchitectSession arch = ArchitectManager.getSessions().get(player.getUuid());
+            if (arch != null && arch.anchorPos != null && arch.currentEndPos != null && !arch.carryingStructure) {
+                buf.writeBoolean(true);
+                buf.writeInt(arch.mode);
+                buf.writeBlockPos(arch.anchorPos);
+                buf.writeBlockPos(arch.currentEndPos);
+            } else if (arch != null && arch.carryingStructure) {
+                buf.writeBoolean(true);
+                buf.writeInt(4); // 4 = Llevando estructura flotante con rayos
+                BlockPos cPos = BlockPos.ofFloored(arch.structureCenter.x, arch.structureCenter.y, arch.structureCenter.z);
+                buf.writeBlockPos(cPos.add(-1, -1, -1));
+                buf.writeBlockPos(cPos.add(1, 1, 1));
+            } else {
+                buf.writeBoolean(false);
             }
 
             ServerPlayNetworking.send(player, PortalGravityMod.SYNC_FX_PACKET, buf);
