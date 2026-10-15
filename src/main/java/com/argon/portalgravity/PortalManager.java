@@ -63,13 +63,15 @@ public class PortalManager {
 
     public static class ShotBeamFx {
         public final RegistryKey<World> dimension;
+        public final int shooterEntityId;
         public final Vec3d start;
         public final Vec3d end;
-        public final int colorType; // 0 = Azul, 1 = Naranja, 2 = Esmeralda Arquitecto
+        public final int colorType; // 0 = Azul, 1 = Naranja, 2 = Esmeralda, 3 = Magenta Gancho
         public int ticksLeft;
 
-        public ShotBeamFx(RegistryKey<World> dimension, Vec3d start, Vec3d end, int colorType, int ticksLeft) {
+        public ShotBeamFx(RegistryKey<World> dimension, int shooterEntityId, Vec3d start, Vec3d end, int colorType, int ticksLeft) {
             this.dimension = dimension;
+            this.shooterEntityId = shooterEntityId;
             this.start = start;
             this.end = end;
             this.colorType = colorType;
@@ -80,7 +82,7 @@ public class PortalManager {
     public static class PlayerPortalPair {
         public PortalRecord bluePortal;
         public PortalRecord orangePortal;
-        public int mode = 0; // 0 = Normal, 1 = Colosal, 2 = Impulso
+        public int mode = 0;
     }
 
     private static final Map<UUID, PlayerPortalPair> PLAYER_PORTALS = new HashMap<>();
@@ -126,8 +128,8 @@ public class PortalManager {
                 player
         ));
 
-        Vec3d handStart = eyePos.add(lookVec.multiply(0.5)).subtract(0, 0.2, 0);
-        ACTIVE_SHOT_BEAMS.add(new ShotBeamFx(world.getRegistryKey(), handStart, hit.getPos(), isOrange ? 1 : 0, 7));
+        Vec3d handStart = computeServerMuzzlePos(player);
+        ACTIVE_SHOT_BEAMS.add(new ShotBeamFx(world.getRegistryKey(), player.getId(), handStart, hit.getPos(), isOrange ? 1 : 0, 7));
 
         if (hit.getType() != HitResult.Type.BLOCK) {
             world.playSound(null, player.getX(), player.getY(), player.getZ(),
@@ -197,6 +199,19 @@ public class PortalManager {
                 SoundEvents.ENTITY_ENDERMAN_TELEPORT, SoundCategory.PLAYERS, 0.9f, isOrange ? 1.25f : 1.55f);
     }
 
+    public static Vec3d computeServerMuzzlePos(ServerPlayerEntity player) {
+        Vec3d eye = player.getEyePos();
+        Vec3d look = player.getRotationVec(1.0F);
+        Vec3d right = look.crossProduct(new Vec3d(0, 1, 0));
+        if (right.lengthSquared() < 1e-4) {
+            right = new Vec3d(1, 0, 0);
+        } else {
+            right = right.normalize();
+        }
+        Vec3d camUp = right.crossProduct(look).normalize();
+        return eye.add(look.multiply(0.44)).add(right.multiply(0.43)).subtract(camUp.multiply(0.19));
+    }
+
     public static void clearPlayerPortals(ServerPlayerEntity player) {
         MinecraftServer server = player.getServer();
         if (server == null) return;
@@ -236,13 +251,11 @@ public class PortalManager {
             String blueId = pair.bluePortal.forwardUuid.toString();
             String orangeId = pair.orangePortal.forwardUuid.toString();
 
-            // 1. Dar forma elíptica exacta de 64 lados que encaja con nuestro óvalo 3D
             server.getCommandManager().executeWithPrefix(silentSource,
                     "execute as " + blueId + " run portal make_portal_round");
             server.getCommandManager().executeWithPrefix(silentSource,
                     "execute as " + orangeId + " run portal make_portal_round");
 
-            // 2. Aplicar rotación 3D exacta R = E2 * E1^T y sincronizar con los clientes
             applyExactPortalRotation(server, silentSource, blueId, pair.bluePortal, pair.orangePortal);
             applyExactPortalRotation(server, silentSource, orangeId, pair.orangePortal, pair.bluePortal);
 
@@ -328,10 +341,6 @@ public class PortalManager {
         server.getCommandManager().executeWithPrefix(source, cmd);
     }
 
-    /**
-     * Inicializa y spawnea la entidad `immersive_portals:portal` usando `EntityType.loadEntityWithPassengers`
-     * con todos los campos requeridos en NBT (sin llamar a `writeNbt` sobre una instancia no inicializada).
-     */
     private static UUID spawnLinkedPortal(MinecraftServer server, PortalRecord from, PortalRecord to) {
         ServerWorld fromWorld = server.getWorld(from.dimension);
         if (fromWorld == null) return null;
@@ -386,11 +395,7 @@ public class PortalManager {
             return entity;
         });
 
-        if (portal == null) {
-            PortalGravityMod.LOGGER.error("No se pudo instanciar immersive_portals:portal");
-            return null;
-        }
-
+        if (portal == null) return null;
         fromWorld.spawnEntity(portal);
         return portal.getUuid();
     }

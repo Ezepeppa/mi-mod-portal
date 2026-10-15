@@ -2,6 +2,7 @@
   "item.portalgravity.portal_gun": "Arcane Portal Gun",
   "item.portalgravity.gravity_gun": "Gravitational Plasma Gun",
   "item.portalgravity.architect_gun": "3D Techno-Arcane Architect Gun",
+  "item.portalgravity.grapple_gun": "3D Plasma Grapple & Tether Rifle",
   "item.portalgravity.singularity_orb": "Arcane Singularity Orb",
   "itemGroup.portalgravity.main": "Portal, Gravity & Architect"
 }

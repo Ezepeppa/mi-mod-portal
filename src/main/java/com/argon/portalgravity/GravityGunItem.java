@@ -38,7 +38,7 @@ public class GravityGunItem extends Item {
         tooltip.add(Text.literal("Clic Derecho: ").formatted(Formatting.GRAY)
                 .append(Text.literal("Agarrar / Soltar con colisiones reales").formatted(Formatting.GOLD)));
         tooltip.add(Text.literal("Ruedita del Mouse (al sostener): ").formatted(Formatting.GRAY)
-                .append(Text.literal("Acercar / Alejar objeto").formatted(Formatting.GREEN)));
+                .append(Text.literal("Acercar / Alejar objeto (sin cambiar slot)").formatted(Formatting.GREEN)));
         tooltip.add(Text.literal("Clic Izquierdo: ").formatted(Formatting.GRAY)
                 .append(Text.literal("Lanzar con alto daño de impacto").formatted(Formatting.YELLOW)));
         tooltip.add(Text.literal("Shift + Clic Derecho: ").formatted(Formatting.GRAY)

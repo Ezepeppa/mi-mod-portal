@@ -25,14 +25,13 @@ public class FxSyncManager {
 
             PacketByteBuf buf = PacketByteBufs.create();
 
-            // 0. Flag para saber si el cliente debe interceptar la ruedita del mouse (zoom en Gravity Gun o altura en Cañón Arquitecto)
-            List<GravityGunManager.HeldObjectState> myHeld = GravityGunManager.getPlayerHeld().get(player.getUuid());
-            boolean holdingGravityObj = (myHeld != null && !myHeld.isEmpty());
+            // 0. Estado de bloqueo de ruedita del mouse
+            boolean holdingGravityObj = GravityGunManager.hasHeldObjects(player);
             boolean interceptScroll = holdingGravityObj || ArchitectManager.isInterceptingScroll(player);
             buf.writeBoolean(interceptScroll);
             buf.writeDouble(GravityGunManager.getHoldDistance(player.getUuid()));
 
-            // 1. Portales activos en la dimensión
+            // 1. Portales activos
             List<PortalManager.PortalRecord> portals = new ArrayList<>();
             List<Boolean> portalLinkedFlags = new ArrayList<>();
             for (PortalManager.PlayerPortalPair pair : PortalManager.getPlayerPortals().values()) {
@@ -68,7 +67,7 @@ public class FxSyncManager {
                 buf.writeDouble(p.height);
             }
 
-            // 2. Objetos sostenidos por Gravity Gun (incluyendo entityId para interpolación a 144 FPS en el cliente)
+            // 2. Objetos sostenidos por Gravity Gun
             List<Integer> holderIds = new ArrayList<>();
             List<Integer> heldEntityIds = new ArrayList<>();
             List<Boolean> isBlockFlags = new ArrayList<>();
@@ -81,11 +80,7 @@ public class FxSyncManager {
                 ServerPlayerEntity holder = server.getPlayerManager().getPlayer(entry.getKey());
                 if (holder == null || !holder.getServerWorld().getRegistryKey().equals(dim)) continue;
 
-                Vec3d eye = holder.getEyePos();
-                Vec3d look = holder.getRotationVec(1.0F);
-                Vec3d right = look.crossProduct(new Vec3d(0, 1, 0)).normalize();
-                Vec3d gunMuzzle = eye.add(look.multiply(0.65)).add(right.multiply(0.32)).subtract(0, 0.22, 0);
-
+                Vec3d gunMuzzle = PortalManager.computeServerMuzzlePos(holder);
                 for (GravityGunManager.HeldObjectState st : entry.getValue()) {
                     Entity e = world.getEntity(st.entityUuid);
                     if (e != null && e.isAlive()) {
@@ -125,6 +120,7 @@ public class FxSyncManager {
             }
             buf.writeInt(shots.size());
             for (PortalManager.ShotBeamFx b : shots) {
+                buf.writeInt(b.shooterEntityId);
                 buf.writeInt(b.colorType);
                 buf.writeDouble(b.start.x);
                 buf.writeDouble(b.start.y);
@@ -147,7 +143,7 @@ public class FxSyncManager {
                 buf.writeInt(v.ticksRemaining);
             }
 
-            // 5. Holograma 3D y rayos del Cañón Arquitecto para este jugador
+            // 5. Holograma 3D del Cañón Arquitecto
             ArchitectManager.ArchitectSession arch = ArchitectManager.getSessions().get(player.getUuid());
             if (arch != null && arch.anchorPos != null && arch.currentEndPos != null && !arch.carryingStructure) {
                 buf.writeBoolean(true);
@@ -156,12 +152,55 @@ public class FxSyncManager {
                 buf.writeBlockPos(arch.currentEndPos);
             } else if (arch != null && arch.carryingStructure) {
                 buf.writeBoolean(true);
-                buf.writeInt(4); // 4 = Llevando estructura flotante con rayos
+                buf.writeInt(4);
                 BlockPos cPos = BlockPos.ofFloored(arch.structureCenter.x, arch.structureCenter.y, arch.structureCenter.z);
                 buf.writeBlockPos(cPos.add(-1, -1, -1));
                 buf.writeBlockPos(cPos.add(1, 1, 1));
             } else {
                 buf.writeBoolean(false);
+            }
+
+            // 6. Cuerdas de Plasma del Rifle de Gancho y Lazo
+            List<Integer> grappleHolders = new ArrayList<>();
+            List<Vec3d> grappleAnchors = new ArrayList<>();
+            for (Map.Entry<UUID, GrappleManager.PlayerGrappleHook> gEntry : GrappleManager.getPlayerGrapples().entrySet()) {
+                ServerPlayerEntity gPlayer = server.getPlayerManager().getPlayer(gEntry.getKey());
+                if (gPlayer != null && gEntry.getValue().dimension.equals(dim)) {
+                    grappleHolders.add(gPlayer.getId());
+                    grappleAnchors.add(gEntry.getValue().anchorPoint);
+                }
+            }
+            buf.writeInt(grappleHolders.size());
+            for (int i = 0; i < grappleHolders.size(); i++) {
+                buf.writeInt(grappleHolders.get(i));
+                Vec3d a = grappleAnchors.get(i);
+                buf.writeDouble(a.x);
+                buf.writeDouble(a.y);
+                buf.writeDouble(a.z);
+            }
+
+            List<Vec3d> tetherA = new ArrayList<>();
+            List<Vec3d> tetherB = new ArrayList<>();
+            for (GrappleManager.ActiveTether t : GrappleManager.getActiveTethers()) {
+                if (t.dimension.equals(dim)) {
+                    Vec3d pA = t.pointA.resolvePos(world);
+                    Vec3d pB = t.pointB.resolvePos(world);
+                    if (pA != null && pB != null) {
+                        tetherA.add(pA);
+                        tetherB.add(pB);
+                    }
+                }
+            }
+            buf.writeInt(tetherA.size());
+            for (int i = 0; i < tetherA.size(); i++) {
+                Vec3d pA = tetherA.get(i);
+                Vec3d pB = tetherB.get(i);
+                buf.writeDouble(pA.x);
+                buf.writeDouble(pA.y);
+                buf.writeDouble(pA.z);
+                buf.writeDouble(pB.x);
+                buf.writeDouble(pB.y);
+                buf.writeDouble(pB.z);
             }
 
             ServerPlayNetworking.send(player, PortalGravityMod.SYNC_FX_PACKET, buf);

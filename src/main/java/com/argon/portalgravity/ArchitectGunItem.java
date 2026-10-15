@@ -40,10 +40,10 @@ public class ArchitectGunItem extends Item {
         tooltip.add(Text.literal("Shift + Clic Derecho: ").formatted(Formatting.GRAY)
                 .append(Text.literal("Cambiar Modo (Suelo XZ / Pared / Cubo 3D / Mover Estructura)").formatted(Formatting.AQUA)));
         tooltip.add(Text.literal("Clic Derecho (1º y 2º clic): ").formatted(Formatting.GRAY)
-                .append(Text.literal("Anclar inicio, estirar holograma 3D y construir/mover").formatted(Formatting.GOLD)));
+                .append(Text.literal("Anclar inicio, estirar cubos 3D y construir/mover").formatted(Formatting.GOLD)));
         tooltip.add(Text.literal("Ruedita del Mouse (en previsualización): ").formatted(Formatting.GRAY)
                 .append(Text.literal("Cambiar altura/pisos o acercar/alejar estructura").formatted(Formatting.YELLOW)));
         tooltip.add(Text.literal("Clic Izquierdo: ").formatted(Formatting.GRAY)
-                .append(Text.literal("Cancelar previsualización actual").formatted(Formatting.RED)));
+                .append(Text.literal("Cancelar previsualización o lanzar estructura").formatted(Formatting.RED)));
     }
 }

@@ -8,6 +8,7 @@ import net.minecraft.entity.FallingBlockEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.MovementType;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtFloat;
 import net.minecraft.nbt.NbtList;
@@ -86,11 +87,16 @@ public class GravityGunManager {
 
     private static final double DEFAULT_HOLD_DISTANCE = 3.5;
     private static final double MIN_HOLD_DISTANCE = 1.8;
-    private static final double MAX_HOLD_DISTANCE = 13.0;
-    private static final double MAX_GRAB_RANGE = 13.5;
+    private static final double MAX_HOLD_DISTANCE = 14.0;
+    private static final double MAX_GRAB_RANGE = 14.0;
 
     public static Map<UUID, List<HeldObjectState>> getPlayerHeld() {
         return PLAYER_HELD;
+    }
+
+    public static boolean hasHeldObjects(ServerPlayerEntity player) {
+        List<HeldObjectState> list = PLAYER_HELD.get(player.getUuid());
+        return list != null && !list.isEmpty();
     }
 
     public static double getHoldDistance(UUID playerUuid) {
@@ -102,7 +108,7 @@ public class GravityGunManager {
         if (list == null || list.isEmpty()) return;
 
         double current = getHoldDistance(player.getUuid());
-        double updated = Math.max(MIN_HOLD_DISTANCE, Math.min(MAX_HOLD_DISTANCE, current + scrollDelta * 0.65));
+        double updated = Math.max(MIN_HOLD_DISTANCE, Math.min(MAX_HOLD_DISTANCE, current + scrollDelta * 0.75));
         PLAYER_HOLD_DISTANCE.put(player.getUuid(), updated);
 
         player.getServerWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
@@ -148,7 +154,7 @@ public class GravityGunManager {
                 BlockPos bp = center.add(off[0], dy, off[2]);
                 BlockState st = world.getBlockState(bp);
                 if (canLiftBlock(world, bp, st)) {
-                    Entity display = createRotatingBlockDisplay(world, Vec3d.ofCenter(bp), st);
+                    Entity display = createRotatingBlockDisplay(world, Vec3d.ofCenter(bp).add(0, 0.4, 0), st);
                     if (display != null) {
                         world.setBlockState(bp, Blocks.AIR.getDefaultState(), 3);
                         grabbed.add(new HeldObjectState(display.getUuid(), true, st, slot++));
@@ -216,10 +222,12 @@ public class GravityGunManager {
             BlockPos pos = blockHit.getBlockPos();
             BlockState state = world.getBlockState(pos);
             if (canLiftBlock(world, pos, state)) {
-                Vec3d spawnCenter = Vec3d.ofCenter(pos);
+                world.setBlockState(pos, Blocks.AIR.getDefaultState(), 3);
+                // Desplazar ligeramente hacia la cara libre para que salga limpio de cualquier hueco
+                Vec3d liftOffset = Vec3d.of(blockHit.getSide().getVector()).multiply(0.35);
+                Vec3d spawnCenter = Vec3d.ofCenter(pos).add(liftOffset);
                 Entity display = createRotatingBlockDisplay(world, spawnCenter, state);
                 if (display != null) {
-                    world.setBlockState(pos, Blocks.AIR.getDefaultState(), 3);
                     double initDist = Math.max(MIN_HOLD_DISTANCE, Math.min(7.5, eyePos.distanceTo(spawnCenter)));
                     PLAYER_HOLD_DISTANCE.put(player.getUuid(), initDist);
                     List<HeldObjectState> list = new ArrayList<>();
@@ -370,7 +378,6 @@ public class GravityGunManager {
             return;
         }
 
-        // Pulso gravitatorio frontal si no sostiene nada
         Box pushBox = player.getBoundingBox().stretch(lookVec.multiply(7.5)).expand(1.6);
         List<Entity> targets = world.getOtherEntities(player, pushBox,
                 e -> e.isAlive() && !e.isSpectator() && !isPortalOrDisplay(e));
@@ -389,6 +396,10 @@ public class GravityGunManager {
             world.playSound(null, player.getX(), player.getY(), player.getZ(),
                     SoundEvents.ENTITY_WARDEN_SONIC_BOOM, SoundCategory.PLAYERS, 0.6f, 1.6f);
         }
+    }
+
+    public static void registerLaunchedProjectile(RegistryKey<World> dimension, UUID projectileUuid, UUID shooterUuid, float damage, int ticks) {
+        LAUNCHED_PROJECTILES.add(new LaunchedProjectile(dimension, projectileUuid, shooterUuid, damage, ticks));
     }
 
     public static FallingBlockEntity spawnPhysicalFallingBlock(ServerWorld world, Vec3d pos, Vec3d velocity,
@@ -411,8 +422,10 @@ public class GravityGunManager {
     }
 
     /**
-     * Resuelve colisiones eje por eje (Y, X, Z) contra el mundo para una caja centrada en `currentPos`
-     * de semiancho `halfW` y semialto `halfH`, evitando que atraviese pisos o paredes.
+     * Resuelve colisiones eje por eje pero:
+     * 1) Si la caja inicial está atrapada dentro de un hueco rodeado de bloques (`!world.isSpaceEmpty(box)`),
+     *    permite extraerla libremente hacia afuera sin trabarse.
+     * 2) Al deslizarse por el piso, mantiene una holgura de 0.02 en Y para que no se trabe en X ni en Z.
      */
     public static Vec3d resolveBoxCollision(World world, Vec3d currentPos, Vec3d desiredDelta,
                                             double halfW, double halfH, boolean[] outCollidedAxes) {
@@ -421,50 +434,60 @@ public class GravityGunManager {
                 currentPos.x + halfW, currentPos.y + halfH, currentPos.z + halfW
         );
 
+        // Si inicialmente está incrustado al sacarlo de un hueco rodeado de bloques, permitir la extracción libre
+        if (!world.isSpaceEmpty(box)) {
+            return desiredDelta;
+        }
+
         double dx = desiredDelta.x;
         double dy = desiredDelta.y;
         double dz = desiredDelta.z;
 
-        // 1. Eje Y (Suelo y Techo)
+        // 1. Eje Y
         if (Math.abs(dy) > 1e-5) {
             if (!world.isSpaceEmpty(box.offset(0, dy, 0))) {
                 outCollidedAxes[1] = true;
-                dy *= 0.25;
-                if (!world.isSpaceEmpty(box.offset(0, dy, 0))) {
-                    dy = 0.0;
-                }
+                dy = 0.0;
+            } else {
+                box = box.offset(0, dy, 0);
             }
-            box = box.offset(0, dy, 0);
         }
 
-        // 2. Eje X
+        // 2. Eje X (con leve margen vertical para deslizar sobre pisos sin trabarse en los bordes de los bloques)
+        Box horizBox = box.contract(0.0, 0.02, 0.0);
         if (Math.abs(dx) > 1e-5) {
-            if (!world.isSpaceEmpty(box.offset(dx, 0, 0))) {
+            if (!world.isSpaceEmpty(horizBox.offset(dx, 0, 0))) {
                 outCollidedAxes[0] = true;
-                dx *= 0.25;
-                if (!world.isSpaceEmpty(box.offset(dx, 0, 0))) {
-                    dx = 0.0;
-                }
+                dx = 0.0;
+            } else {
+                horizBox = horizBox.offset(dx, 0, 0);
             }
-            box = box.offset(dx, 0, 0);
         }
 
         // 3. Eje Z
         if (Math.abs(dz) > 1e-5) {
-            if (!world.isSpaceEmpty(box.offset(0, 0, dz))) {
+            if (!world.isSpaceEmpty(horizBox.offset(0, 0, dz))) {
                 outCollidedAxes[2] = true;
-                dz *= 0.25;
-                if (!world.isSpaceEmpty(box.offset(0, 0, dz))) {
-                    dz = 0.0;
-                }
+                dz = 0.0;
             }
         }
 
         return new Vec3d(dx, dy, dz);
     }
 
+    private static boolean hasGravityGunInInventory(ServerPlayerEntity player) {
+        if (player.getMainHandStack().isOf(PortalGravityMod.GRAVITY_GUN)
+                || player.getOffHandStack().isOf(PortalGravityMod.GRAVITY_GUN)) {
+            return true;
+        }
+        for (int i = 0; i < 9; i++) {
+            ItemStack st = player.getInventory().getStack(i);
+            if (st.isOf(PortalGravityMod.GRAVITY_GUN)) return true;
+        }
+        return false;
+    }
+
     public static void tick(MinecraftServer server) {
-        // 1. Procesar daño por impacto de proyectiles lanzados por la Gravity Gun
         Iterator<LaunchedProjectile> projIt = LAUNCHED_PROJECTILES.iterator();
         while (projIt.hasNext()) {
             LaunchedProjectile lp = projIt.next();
@@ -479,7 +502,7 @@ public class GravityGunManager {
                 continue;
             }
             Entity proj = world.getEntity(lp.projectileUuid);
-            if (proj == null || !proj.isAlive() || proj.getVelocity().lengthSquared() < 0.06) {
+            if (proj == null || !proj.isAlive() || proj.getVelocity().lengthSquared() < 0.05) {
                 projIt.remove();
                 continue;
             }
@@ -508,7 +531,6 @@ public class GravityGunManager {
             }
         }
 
-        // 2. Actualizar objetos sostenidos por la Gravity Gun con colisiones de hitbox reales
         Iterator<Map.Entry<UUID, List<HeldObjectState>>> it = PLAYER_HELD.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<UUID, List<HeldObjectState>> entry = it.next();
@@ -518,16 +540,13 @@ public class GravityGunManager {
                 continue;
             }
 
-            boolean holdingGravityGun = player.getMainHandStack().isOf(PortalGravityMod.GRAVITY_GUN)
-                    || player.getOffHandStack().isOf(PortalGravityMod.GRAVITY_GUN);
-
-            ServerWorld world = player.getServerWorld();
-            List<HeldObjectState> list = entry.getValue();
-
-            if (!holdingGravityGun) {
+            if (!hasGravityGunInInventory(player)) {
                 releaseAll(player, false);
                 continue;
             }
+
+            ServerWorld world = player.getServerWorld();
+            List<HeldObjectState> list = entry.getValue();
 
             Vec3d eyePos = player.getEyePos();
             Vec3d lookVec = player.getRotationVec(1.0F);
@@ -544,7 +563,6 @@ public class GravityGunManager {
 
                 state.ageTicks++;
 
-                // Calcular punto deseado pero frenar con raycast si hay suelo/pared antes de holdDist
                 Vec3d targetPos;
                 if (state.orbitSlot >= 0) {
                     double orbitAngle = (state.ageTicks * 0.09) + (state.orbitSlot * (2.0 * Math.PI / Math.max(1, list.size())));
@@ -562,8 +580,8 @@ public class GravityGunManager {
                         clampedPoint = obstacleHit.getPos().add(hitNormal.multiply(0.55));
                     }
 
-                    double heavyBobY = Math.sin(state.ageTicks * 0.11) * 0.12 - 0.06;
-                    double swaySide = Math.cos(state.ageTicks * 0.08) * 0.08;
+                    double heavyBobY = Math.sin(state.ageTicks * 0.11) * 0.10 - 0.05;
+                    double swaySide = Math.cos(state.ageTicks * 0.08) * 0.07;
                     Vec3d rightVec = lookVec.crossProduct(new Vec3d(0, 1, 0)).normalize();
                     targetPos = clampedPoint.add(rightVec.multiply(swaySide))
                             .add(0, heavyBobY - (state.isBlockDisplay ? 0.0 : held.getHeight() * 0.4), 0);
@@ -571,18 +589,18 @@ public class GravityGunManager {
 
                 Vec3d currentPos = held.getPos();
                 Vec3d delta = targetPos.subtract(currentPos);
-                if (delta.lengthSquared() > 196.0) {
+                if (delta.lengthSquared() > 256.0) {
                     held.setNoGravity(false);
                     objIt.remove();
                     continue;
                 }
 
-                Vec3d desiredStep = held.getVelocity().multiply(0.45).add(delta.multiply(0.38));
-                boolean[] collidedAxes = new boolean[3]; // [X, Y, Z]
+                Vec3d desiredStep = held.getVelocity().multiply(0.42).add(delta.multiply(0.42));
+                boolean[] collidedAxes = new boolean[3];
                 Vec3d actualStep;
 
                 if (state.isBlockDisplay) {
-                    actualStep = resolveBoxCollision(world, currentPos, desiredStep, 0.48, 0.48, collidedAxes);
+                    actualStep = resolveBoxCollision(world, currentPos, desiredStep, 0.45, 0.45, collidedAxes);
                     held.setPosition(currentPos.x + actualStep.x, currentPos.y + actualStep.y, currentPos.z + actualStep.z);
                 } else {
                     Vec3d before = held.getPos();
@@ -598,14 +616,11 @@ public class GravityGunManager {
                 held.fallDistance = 0.0f;
                 state.collidingSurface = (collidedAxes[0] || collidedAxes[1] || collidedAxes[2]);
 
-                // Rotación natural afectada por el peso y por el roce/colisión contra pisos o paredes
                 if (collidedAxes[1]) {
-                    // Al rozar contra el piso, rueda según el arrastre horizontal y amortigua su inclinación
                     state.angVelX = (float) (actualStep.z * 65.0);
                     state.angVelZ = (float) (-actualStep.x * 65.0);
                     state.angVelY = (float) (actualStep.length() * 25.0);
                 } else if (collidedAxes[0] || collidedAxes[2]) {
-                    // Al rozar contra una pared, gira sobre el eje vertical e inclina
                     state.angVelY = (float) (actualStep.y * 55.0 + 8.0);
                     state.angVelX = (float) (actualStep.z * 40.0);
                 } else {

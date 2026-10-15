@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "III",
+    "LCL",
+    " R "
+  ],
+  "key": {
+    "I": { "item": "minecraft:iron_ingot" },
+    "L": { "item": "minecraft:lead" },
+    "C": { "item": "minecraft:crossbow" },
+    "R": { "item": "minecraft:redstone" }
+  },
+  "result": {
+    "item": "portalgravity:grapple_gun",
+    "count": 1
+  }
+}

@@ -34,6 +34,7 @@ public class PortalGravityMod implements ModInitializer {
     public static final Item PORTAL_GUN = new PortalGunItem(new Item.Settings().maxCount(1).rarity(Rarity.EPIC).fireproof());
     public static final Item GRAVITY_GUN = new GravityGunItem(new Item.Settings().maxCount(1).rarity(Rarity.EPIC).fireproof());
     public static final Item ARCHITECT_GUN = new ArchitectGunItem(new Item.Settings().maxCount(1).rarity(Rarity.EPIC).fireproof());
+    public static final Item GRAPPLE_GUN = new GrappleGunItem(new Item.Settings().maxCount(1).rarity(Rarity.EPIC).fireproof());
     public static final Item SINGULARITY_ORB = new SingularityOrbItem(new Item.Settings().maxCount(1).rarity(Rarity.EPIC).fireproof());
 
     private static final Map<UUID, Long> LAST_LEFT_CLICK_TICK = new HashMap<>();
@@ -43,12 +44,14 @@ public class PortalGravityMod implements ModInitializer {
         Registry.register(Registries.ITEM, new Identifier(MOD_ID, "portal_gun"), PORTAL_GUN);
         Registry.register(Registries.ITEM, new Identifier(MOD_ID, "gravity_gun"), GRAVITY_GUN);
         Registry.register(Registries.ITEM, new Identifier(MOD_ID, "architect_gun"), ARCHITECT_GUN);
+        Registry.register(Registries.ITEM, new Identifier(MOD_ID, "grapple_gun"), GRAPPLE_GUN);
         Registry.register(Registries.ITEM, new Identifier(MOD_ID, "singularity_orb"), SINGULARITY_ORB);
 
         ItemGroupEvents.modifyEntriesEvent(ItemGroups.TOOLS).register(entries -> {
             entries.add(PORTAL_GUN);
             entries.add(GRAVITY_GUN);
             entries.add(ARCHITECT_GUN);
+            entries.add(GRAPPLE_GUN);
             entries.add(SINGULARITY_ORB);
         });
 
@@ -56,6 +59,7 @@ public class PortalGravityMod implements ModInitializer {
             entries.add(PORTAL_GUN);
             entries.add(GRAVITY_GUN);
             entries.add(ARCHITECT_GUN);
+            entries.add(GRAPPLE_GUN);
             entries.add(SINGULARITY_ORB);
         });
 
@@ -85,14 +89,18 @@ public class PortalGravityMod implements ModInitializer {
             server.execute(() -> handleLeftClickServer(player));
         });
 
-        // Paquete de ruedita del mouse para acercar/alejar objetos en Gravity Gun o ajustar dimensiones en el Cañón Arquitecto
+        // Paquete de ruedita del mouse que también recibe el slot bloqueado para restaurarlo en el servidor si hubiera desfase
         ServerPlayNetworking.registerGlobalReceiver(SCROLL_ADJUST_PACKET, (server, player, handler, buf, responseSender) -> {
             int delta = buf.readInt();
+            int lockedSlot = buf.readInt();
             server.execute(() -> {
-                ItemStack mainStack = player.getMainHandStack();
-                if (mainStack.isOf(GRAVITY_GUN)) {
+                if (lockedSlot >= 0 && lockedSlot < 9) {
+                    player.getInventory().selectedSlot = lockedSlot;
+                }
+                ItemStack stack = player.getMainHandStack();
+                if (stack.isOf(GRAVITY_GUN) || GravityGunManager.hasHeldObjects(player)) {
                     GravityGunManager.adjustHoldDistance(player, delta);
-                } else if (mainStack.isOf(ARCHITECT_GUN)) {
+                } else if (stack.isOf(ARCHITECT_GUN) || ArchitectManager.isInterceptingScroll(player)) {
                     ArchitectManager.adjustDimensionOrDistance(player, delta);
                 }
             });
@@ -102,6 +110,7 @@ public class PortalGravityMod implements ModInitializer {
             GravityGunManager.tick(server);
             PortalManager.tickPortals(server);
             ArchitectManager.tick(server);
+            GrappleManager.tick(server);
             SingularityManager.tick(server);
             FxSyncManager.syncToAllPlayers(server);
         });
@@ -109,14 +118,16 @@ public class PortalGravityMod implements ModInitializer {
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             GravityGunManager.releaseAll(handler.player, false);
             ArchitectManager.cancelOrDrop(handler.player);
+            GrappleManager.clearPlayer(handler.player);
         });
 
-        LOGGER.info("Mod Portal, Gravity, Architect & Singularity v3.0.0 cargado.");
+        LOGGER.info("Mod Portal, Gravity, Architect, Grapple & Singularity v4.0.0 cargado.");
     }
 
     public static boolean isModWeapon(ItemStack stack) {
         return stack.isOf(PORTAL_GUN) || stack.isOf(GRAVITY_GUN)
-                || stack.isOf(ARCHITECT_GUN) || stack.isOf(SINGULARITY_ORB);
+                || stack.isOf(ARCHITECT_GUN) || stack.isOf(GRAPPLE_GUN)
+                || stack.isOf(SINGULARITY_ORB);
     }
 
     public static void handleLeftClickServer(ServerPlayerEntity player) {
@@ -142,6 +153,8 @@ public class PortalGravityMod implements ModInitializer {
             } else {
                 ArchitectManager.handleLeftClickCancelOrLaunch(player);
             }
+        } else if (mainStack.isOf(GRAPPLE_GUN)) {
+            GrappleManager.shootTetherPoint(player);
         } else if (mainStack.isOf(SINGULARITY_ORB)) {
             SingularityManager.quantumSwap(player);
         }

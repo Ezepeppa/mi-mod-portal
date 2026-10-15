@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "portalgravity",
   "version": "${version}",
-  "name": "Portal, Gravity, Architect & Singularity Mod",
-  "description": "Portal Gun 3D conectada con Immersive Portals, Gravity Gun 3D a 144 FPS con colisiones y zoom, Canon Arquitecto 3D y Orbe de Singularidad para Minecraft 1.20.1.",
+  "name": "Portal, Gravity, Architect, Grapple & Singularity Mod",
+  "description": "Portal Gun 3D doble faz, Gravity Gun 3D a 144 FPS con ruedita fija, Canon Arquitecto 3D con bloques holograficos completos, Rifle de Gancho y Lazo 3D, y Orbe de Singularidad para Minecraft 1.20.1.",
   "authors": [
     "Creado con Argon"
   ],

@@ -89,7 +89,7 @@ public class SingularityManager {
             target.setYaw(playerYaw);
 
             PortalManager.getActiveShotBeams().add(
-                    new PortalManager.ShotBeamFx(world.getRegistryKey(), playerOld.add(0, 1.0, 0), targetOld.add(0, 1.0, 0), 0, 10)
+                    new PortalManager.ShotBeamFx(world.getRegistryKey(), player.getId(), playerOld.add(0, 1.0, 0), targetOld.add(0, 1.0, 0), 0, 10)
             );
             world.playSound(null, targetOld.x, targetOld.y, targetOld.z,
                     SoundEvents.ENTITY_ENDERMAN_TELEPORT, SoundCategory.PLAYERS, 1.0f, 0.75f);
@@ -102,7 +102,7 @@ public class SingularityManager {
         if (hit.getType() == HitResult.Type.BLOCK) {
             Vec3d dest = hit.getPos().add(Vec3d.of(hit.getSide().getVector()).multiply(0.8));
             PortalManager.getActiveShotBeams().add(
-                    new PortalManager.ShotBeamFx(world.getRegistryKey(), player.getPos().add(0, 1.0, 0), dest.add(0, 1.0, 0), 1, 8)
+                    new PortalManager.ShotBeamFx(world.getRegistryKey(), player.getId(), player.getPos().add(0, 1.0, 0), dest.add(0, 1.0, 0), 1, 8)
             );
             player.teleport(world, dest.x, dest.y, dest.z, player.getYaw(), player.getPitch());
             world.playSound(null, dest.x, dest.y, dest.z,
