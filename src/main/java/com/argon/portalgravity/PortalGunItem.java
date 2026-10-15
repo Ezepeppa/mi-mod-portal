@@ -26,9 +26,9 @@ public class PortalGunItem extends Item {
             if (user.isSneaking()) {
                 PortalManager.clearPlayerPortals(serverPlayer);
             } else {
-                PortalManager.shootPortal(serverPlayer, true); // true = Portal Naranja (Clic Derecho)
+                PortalManager.shootPortal(serverPlayer, true); // Portal Naranja
             }
-            user.getItemCooldownManager().set(this, 5);
+            user.getItemCooldownManager().set(this, 4);
         }
         return TypedActionResult.success(stack, world.isClient());
     }
@@ -39,6 +39,8 @@ public class PortalGunItem extends Item {
                 .append(Text.literal("Disparar Portal Azul").formatted(Formatting.AQUA)));
         tooltip.add(Text.literal("Clic Derecho: ").formatted(Formatting.GRAY)
                 .append(Text.literal("Disparar Portal Naranja").formatted(Formatting.GOLD)));
+        tooltip.add(Text.literal("Shift + Clic Izquierdo: ").formatted(Formatting.GRAY)
+                .append(Text.literal("Cambiar Modo (Normal / Colosal / Impulso)").formatted(Formatting.LIGHT_PURPLE)));
         tooltip.add(Text.literal("Shift + Clic Derecho: ").formatted(Formatting.GRAY)
                 .append(Text.literal("Cerrar ambos portales").formatted(Formatting.RED)));
     }

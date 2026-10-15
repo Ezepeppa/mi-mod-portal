@@ -23,7 +23,11 @@ public class GravityGunItem extends Item {
     public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
         ItemStack stack = user.getStackInHand(hand);
         if (!world.isClient && user instanceof ServerPlayerEntity serverPlayer) {
-            GravityGunManager.toggleGrabOrRelease(serverPlayer);
+            if (user.isSneaking()) {
+                GravityGunManager.grabOrbitalShield(serverPlayer);
+            } else {
+                GravityGunManager.toggleGrabOrRelease(serverPlayer);
+            }
             user.getItemCooldownManager().set(this, 4);
         }
         return TypedActionResult.success(stack, world.isClient());
@@ -32,8 +36,10 @@ public class GravityGunItem extends Item {
     @Override
     public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
         tooltip.add(Text.literal("Clic Derecho: ").formatted(Formatting.GRAY)
-                .append(Text.literal("Levantar / Soltar bloque o entidad").formatted(Formatting.GOLD)));
+                .append(Text.literal("Agarrar / Soltar con rayo de plasma 3D").formatted(Formatting.GOLD)));
         tooltip.add(Text.literal("Clic Izquierdo: ").formatted(Formatting.GRAY)
-                .append(Text.literal("Lanzar con fuerza").formatted(Formatting.YELLOW)));
+                .append(Text.literal("Lanzar a gran velocidad").formatted(Formatting.YELLOW)));
+        tooltip.add(Text.literal("Shift + Clic Derecho: ").formatted(Formatting.GRAY)
+                .append(Text.literal("Escudo Orbital (Agarra hasta 5 objetos en órbita)").formatted(Formatting.AQUA)));
     }
 }

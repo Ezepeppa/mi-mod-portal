@@ -1,12 +1,17 @@
-# Mod Portal Gun & Gravity Gun (Minecraft 1.20.1 Fabric)
+# Mod Portal Gun, Gravity Gun & Singularity v2.0.0 (Minecraft 1.20.1 Fabric)
 
-Paquete generado automaticamente por Argon listo para compilar en GitHub Actions.
+Paquete v2.0.0 generado por Argon listo para compilar en GitHub Actions.
 
-## Controles dentro del juego
-- **Pistola de Portales (Portal Gun):**
-  - **Clic Izquierdo:** Dispara el Portal Azul.
+## Controles y Novedades v2.0.0
+- **Pistola de Portales Arcana 3D (Portal Gun):**
+  - **Clic Izquierdo:** Dispara el Portal Azul (con contorno ovalado magico 3D sin particulas).
   - **Clic Derecho:** Dispara el Portal Naranja.
+  - **Shift + Clic Izquierdo:** Cambia entre Portal Normal, Portal Colosal Gigante y Modo Impulso Catapulta.
   - **Shift + Clic Derecho:** Cierra ambos portales.
-- **Pistola de Gravedad (Gravity Gun):**
-  - **Clic Derecho:** Levanta cualquier bloque o criatura frente a tu mira y lo sostiene flotando con fisicas suaves (otro Clic Derecho lo suelta suavemente).
-  - **Clic Izquierdo:** Lanza el bloque o criatura a gran velocidad (o genera un pulso de onda expansiva si no tenes nada agarrado).
+- **Canon de Plasma Gravitatorio 3D (Gravity Gun):**
+  - **Clic Derecho:** Levanta cualquier bloque o criatura con rayos de plasma 3D y rotacion fisica real (otro Clic Derecho lo suelta).
+  - **Clic Izquierdo:** Lanza el bloque o criatura a gran velocidad.
+  - **Shift + Clic Derecho:** Activa el Escudo Orbital (levanta hasta 5 bloques/criaturas orbitando en 3D alrededor tuyo).
+- **Orbe de Singularidad Arcana 3D:**
+  - **Clic Derecho:** Despliega un Agujero Negro 3D que atrae enemigos en espiral y explota.
+  - **Clic Izquierdo o Shift + Clic Derecho:** Intercambio Cuantico de Posicion (cambia tu lugar instantaneamente con la criatura o punto al que mires).

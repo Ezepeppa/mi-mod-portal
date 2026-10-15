@@ -1,5 +1,6 @@
 {
-  "item.portalgravity.portal_gun": "Portal Gun",
-  "item.portalgravity.gravity_gun": "Gravity Gun",
+  "item.portalgravity.portal_gun": "Arcane Portal Gun",
+  "item.portalgravity.gravity_gun": "Gravitational Plasma Gun",
+  "item.portalgravity.singularity_orb": "Arcane Singularity Orb",
   "itemGroup.portalgravity.main": "Portal & Gravity Gun"
 }
