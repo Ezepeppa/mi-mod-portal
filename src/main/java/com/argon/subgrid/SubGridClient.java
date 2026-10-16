@@ -18,7 +18,6 @@ import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.block.entity.BlockEntityRendererFactories;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.Entity;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.PacketByteBuf;
@@ -26,6 +25,7 @@ import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 import org.lwjgl.glfw.GLFW;
@@ -40,7 +40,6 @@ public class SubGridClient implements ClientModInitializer {
     public void onInitializeClient() {
         BlockEntityRendererFactories.register(SubGridMod.SUBGRID_BLOCK_ENTITY, SubGridBlockEntityRenderer::new);
 
-        // Las 2 teclas para subir y bajar el tamaño de la Grid (por defecto G y H)
         shrinkGridKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.subgridmod.grid_smaller",
                 InputUtil.Type.KEYSYM,
@@ -58,9 +57,6 @@ public class SubGridClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.player == null || client.world == null) return;
 
-            // Subida automática y fluida de micro-escalones cuando caminás sobre bloques en Sub-Grid
-            client.player.setStepHeight(1.05f);
-
             boolean shrinkPressed = false;
             while (shrinkGridKey.wasPressed()) {
                 shrinkPressed = true;
@@ -71,11 +67,9 @@ public class SubGridClient implements ClientModInitializer {
             }
 
             if (shrinkPressed && enlargePressed) {
-                // Combinación secreta 1: presionar G y H al mismo tiempo activa Off-Grid
                 sendGridStepUpdate(1);
             } else if (shrinkPressed) {
                 if (client.player.isSneaking() && SubGridClientState.currentGridStep <= 2) {
-                    // Combinación secreta 2: Shift + G estando en 1/8 desbloquea el modo secreto Off-Grid (1/16 libre)
                     sendGridStepUpdate(1);
                 } else {
                     int next = switch (SubGridClientState.currentGridStep) {
@@ -109,8 +103,8 @@ public class SubGridClient implements ClientModInitializer {
     }
 
     /**
-     * Dibuja una previsualización arquitectónica 3D MUY sutil y no invasiva (sin partículas),
-     * mostrando las aristas finas exactas de la posición del bloque en la Sub-Grid actual o en Off-Grid.
+     * Dibuja una previsualización arquitectónica 3D muy sutil y no invasiva (sin partículas),
+     * mostrando las aristas exactas del bloque y su rotación libre en el eje Y cuando está en modo Off-Grid.
      */
     private void renderSubtlePlacementPreview(WorldRenderContext context) {
         MinecraftClient client = MinecraftClient.getInstance();
@@ -140,13 +134,13 @@ public class SubGridClient implements ClientModInitializer {
         int effectiveStep = (gridStep == 16 && combiningSlabOrStair) ? 8 : gridStep;
 
         BlockState desiredState = SubGridPlacementHandler.getDesiredBlockState(
-                client.player, client.world, activeHand, stack, blockItem, blockHit
+                client.player, client.world, activeHand, stack, blockItem, blockHit, effectiveStep
         );
         if (desiredState == null) return;
 
-        int[] globalOrigin16 = SubGridPlacementHandler.computeGlobalOrigin16(blockHit, desiredState, effectiveStep);
+        int[] globalOrigin16 = SubGridPlacementHandler.computeGlobalOrigin16(blockHit, desiredState, effectiveStep, client.world);
         boolean valid = SubGridPlacementHandler.canPlaceAtGlobal16(
-                client.world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2], desiredState, null
+                client.world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2], desiredState, null, true
         );
 
         MatrixStack matrices = context.matrixStack();
@@ -160,14 +154,17 @@ public class SubGridClient implements ClientModInitializer {
         matrices.translate(-cam.x, -cam.y, -cam.z);
         Matrix4f mat = matrices.peek().getPositionMatrix();
 
-        // Color muy sutil y elegante: blanco-hielo translúcido si es válido, ámbar-coral suave si hay solapamiento
         int r = valid ? (effectiveStep == 1 ? 215 : 210) : 255;
         int g = valid ? (effectiveStep == 1 ? 190 : 235) : 95;
         int b = valid ? 255 : 80;
         int alpha = valid ? 72 : 85;
-        double lineThickness = 0.0055; // Línea arquitectónica finísima y nada invasiva
+        double lineThickness = 0.0055;
 
-        List<int[]> localBoxes = SubGridPlacementHandler.getLocalBoxes16(desiredState);
+        float yawDeg = (effectiveStep == 1) ? MathHelper.wrapDegrees(180.0f - client.player.getYaw()) : 0.0f;
+        double pivotX = (globalOrigin16[0] + 8.0) / 16.0;
+        double pivotZ = (globalOrigin16[2] + 8.0) / 16.0;
+
+        List<int[]> localBoxes = SubGridPlacementHandler.getLocalBoxes16(desiredState, client.world);
         for (int[] lb : localBoxes) {
             Box worldBox = new Box(
                     (globalOrigin16[0] + lb[0]) / 16.0,
@@ -177,23 +174,36 @@ public class SubGridClient implements ClientModInitializer {
                     (globalOrigin16[1] + lb[4]) / 16.0,
                     (globalOrigin16[2] + lb[5]) / 16.0
             ).expand(0.0015);
-            drawSubtleWireframeBox(vc, mat, worldBox, lineThickness, r, g, b, alpha);
+            drawSubtleWireframeBoxRotated(vc, mat, worldBox, pivotX, pivotZ, yawDeg, lineThickness, r, g, b, alpha);
         }
 
         matrices.pop();
     }
 
-    private void drawSubtleWireframeBox(VertexConsumer vc, Matrix4f mat, Box box, double thickness,
-                                        int r, int g, int b, int a) {
-        Vec3d p000 = new Vec3d(box.minX, box.minY, box.minZ);
-        Vec3d p100 = new Vec3d(box.maxX, box.minY, box.minZ);
-        Vec3d p101 = new Vec3d(box.maxX, box.minY, box.maxZ);
-        Vec3d p001 = new Vec3d(box.minX, box.minY, box.maxZ);
+    private Vec3d rotateAroundY(Vec3d pt, double pivotX, double pivotZ, float yawDeg) {
+        if (Math.abs(yawDeg) < 0.01f) return pt;
+        double rad = Math.toRadians(yawDeg);
+        double cos = Math.cos(rad);
+        double sin = Math.sin(rad);
+        double dx = pt.x - pivotX;
+        double dz = pt.z - pivotZ;
+        double rx = pivotX + dx * cos + dz * sin;
+        double rz = pivotZ - dx * sin + dz * cos;
+        return new Vec3d(rx, pt.y, rz);
+    }
 
-        Vec3d p010 = new Vec3d(box.minX, box.maxY, box.minZ);
-        Vec3d p110 = new Vec3d(box.maxX, box.maxY, box.minZ);
-        Vec3d p111 = new Vec3d(box.maxX, box.maxY, box.maxZ);
-        Vec3d p011 = new Vec3d(box.minX, box.maxY, box.maxZ);
+    private void drawSubtleWireframeBoxRotated(VertexConsumer vc, Matrix4f mat, Box box,
+                                                double pivotX, double pivotZ, float yawDeg,
+                                                double thickness, int r, int g, int b, int a) {
+        Vec3d p000 = rotateAroundY(new Vec3d(box.minX, box.minY, box.minZ), pivotX, pivotZ, yawDeg);
+        Vec3d p100 = rotateAroundY(new Vec3d(box.maxX, box.minY, box.minZ), pivotX, pivotZ, yawDeg);
+        Vec3d p101 = rotateAroundY(new Vec3d(box.maxX, box.minY, box.maxZ), pivotX, pivotZ, yawDeg);
+        Vec3d p001 = rotateAroundY(new Vec3d(box.minX, box.minY, box.maxZ), pivotX, pivotZ, yawDeg);
+
+        Vec3d p010 = rotateAroundY(new Vec3d(box.minX, box.maxY, box.minZ), pivotX, pivotZ, yawDeg);
+        Vec3d p110 = rotateAroundY(new Vec3d(box.maxX, box.maxY, box.minZ), pivotX, pivotZ, yawDeg);
+        Vec3d p111 = rotateAroundY(new Vec3d(box.maxX, box.maxY, box.maxZ), pivotX, pivotZ, yawDeg);
+        Vec3d p011 = rotateAroundY(new Vec3d(box.minX, box.maxY, box.maxZ), pivotX, pivotZ, yawDeg);
 
         drawThinLine(vc, mat, p000, p100, thickness, r, g, b, a);
         drawThinLine(vc, mat, p100, p101, thickness, r, g, b, a);

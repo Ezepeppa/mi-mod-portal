@@ -6,15 +6,22 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.ButtonBlock;
+import net.minecraft.block.CampfireBlock;
+import net.minecraft.block.CandleBlock;
 import net.minecraft.block.CartographyTableBlock;
+import net.minecraft.block.ComparatorBlock;
 import net.minecraft.block.CraftingTableBlock;
+import net.minecraft.block.DaylightDetectorBlock;
 import net.minecraft.block.DoorBlock;
+import net.minecraft.block.EntityShapeContext;
+import net.minecraft.block.FenceGateBlock;
 import net.minecraft.block.GrindstoneBlock;
 import net.minecraft.block.LeverBlock;
 import net.minecraft.block.LoomBlock;
 import net.minecraft.block.NoteBlock;
 import net.minecraft.block.RedstoneLampBlock;
 import net.minecraft.block.RepeaterBlock;
+import net.minecraft.block.ShapeContext;
 import net.minecraft.block.SlimeBlock;
 import net.minecraft.block.SmithingTableBlock;
 import net.minecraft.block.StonecutterBlock;
@@ -35,6 +42,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
+import net.minecraft.util.function.BooleanBiFunction;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
@@ -42,6 +50,7 @@ import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.util.shape.VoxelShapes;
+import net.minecraft.world.BlockView;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 
@@ -57,15 +66,16 @@ public class SubGridBlockEntity extends BlockEntity {
         public int minX, minY, minZ;
         public int maxX, maxY, maxZ;
         public boolean renderHere;
-        public int offsetX, offsetY, offsetZ; // Desplazamiento en 1/16 respecto a esta celda
+        public int offsetX, offsetY, offsetZ; // Desplazamiento en 1/16 respecto a primaryPos
         public BlockPos primaryPos;
         public int gridStepPlaced;
-        public boolean toggleLatchPower; // Memoria T-Flip-Flop para micro-circuitos en Grid 1/8
+        public boolean toggleLatchPower;
+        public float yawDegrees; // Rotación continua en el eje Y para el modo Off-Grid
 
         public CellSlice(UUID partId, BlockState storedState,
                          int minX, int minY, int minZ, int maxX, int maxY, int maxZ,
                          boolean renderHere, int offsetX, int offsetY, int offsetZ,
-                         BlockPos primaryPos, int gridStepPlaced, boolean toggleLatchPower) {
+                         BlockPos primaryPos, int gridStepPlaced, boolean toggleLatchPower, float yawDegrees) {
             this.partId = partId;
             this.storedState = storedState;
             this.minX = Math.max(0, Math.min(16, minX));
@@ -81,6 +91,7 @@ public class SubGridBlockEntity extends BlockEntity {
             this.primaryPos = primaryPos;
             this.gridStepPlaced = gridStepPlaced;
             this.toggleLatchPower = toggleLatchPower;
+            this.yawDegrees = yawDegrees;
         }
 
         public boolean intersects(int ax0, int ay0, int az0, int ax1, int ay1, int az1) {
@@ -91,7 +102,7 @@ public class SubGridBlockEntity extends BlockEntity {
     }
 
     private final List<CellSlice> slices = new ArrayList<>();
-    private VoxelShape cachedShape = null;
+    private VoxelShape cachedCollisionShape = null;
     private boolean lastExternalPowered = false;
 
     public SubGridBlockEntity(BlockPos pos, BlockState state) {
@@ -104,7 +115,7 @@ public class SubGridBlockEntity extends BlockEntity {
 
     public void addSlice(CellSlice slice) {
         slices.add(slice);
-        cachedShape = null;
+        cachedCollisionShape = null;
         recalculateBlockProperties();
         markDirtyAndSync();
     }
@@ -112,14 +123,15 @@ public class SubGridBlockEntity extends BlockEntity {
     public boolean removeSlicesByPartId(UUID targetPartId) {
         boolean removed = slices.removeIf(s -> s.partId.equals(targetPartId));
         if (removed) {
-            cachedShape = null;
+            cachedCollisionShape = null;
             recalculateBlockProperties();
             markDirtyAndSync();
         }
         return removed;
     }
 
-    public boolean hasOverlap(int x0, int y0, int z0, int x1, int y1, int z1, @Nullable UUID ignorePartId) {
+    public boolean hasOverlap(BlockView world, int x0, int y0, int z0, int x1, int y1, int z1,
+                              @Nullable UUID ignorePartId) {
         for (CellSlice s : slices) {
             if (ignorePartId != null && s.partId.equals(ignorePartId)) continue;
             if (s.intersects(x0, y0, z0, x1, y1, z1)) {
@@ -129,23 +141,81 @@ public class SubGridBlockEntity extends BlockEntity {
         return false;
     }
 
-    public VoxelShape getCombinedShape() {
-        if (cachedShape != null) {
-            return cachedShape;
+    /**
+     * Devuelve el Outline COMPLETO y SIN CORTAR del bloque apuntado (o la unión de los bloques en esta celda),
+     * desplazado desde `primaryPos` respecto a `pos`, para que el borde negro nativo de Minecraft
+     * envuelva al bloque entero aunque esté desplazado fuera de la grilla normal.
+     */
+    public VoxelShape getUnclippedOutlineShape(BlockView world, BlockPos pos, ShapeContext context) {
+        if (slices.isEmpty()) {
+            return VoxelShapes.empty();
         }
-        VoxelShape shape = VoxelShapes.empty();
-        for (CellSlice s : slices) {
-            if (s.maxX > s.minX && s.maxY > s.minY && s.maxZ > s.minZ) {
-                shape = VoxelShapes.union(shape, Block.createCuboidShape(s.minX, s.minY, s.minZ, s.maxX, s.maxY, s.maxZ));
+
+        if (context instanceof EntityShapeContext esc && esc.getEntity() instanceof PlayerEntity player) {
+            Vec3d eye = player.getEyePos();
+            Vec3d look = player.getRotationVec(1.0F);
+            CellSlice targeted = raycastSlice(eye, eye.add(look.multiply(6.5)));
+            if (targeted != null) {
+                VoxelShape fullTargeted = buildFullShiftedOutlineForSlice(world, pos, targeted);
+                if (!fullTargeted.isEmpty()) {
+                    return fullTargeted;
+                }
             }
         }
-        cachedShape = shape.isEmpty() ? Block.createCuboidShape(0, 0, 0, 16, 16, 16) : shape;
-        return cachedShape;
+
+        VoxelShape combined = VoxelShapes.empty();
+        for (CellSlice s : slices) {
+            VoxelShape fullSliceShape = buildFullShiftedOutlineForSlice(world, pos, s);
+            if (!fullSliceShape.isEmpty()) {
+                combined = VoxelShapes.union(combined, fullSliceShape);
+            }
+        }
+        return combined.isEmpty() ? Block.createCuboidShape(0, 0, 0, 16, 16, 16) : combined;
     }
 
-    public VoxelShape getCombinedCollisionShape() {
+    private VoxelShape buildFullShiftedOutlineForSlice(BlockView world, BlockPos currentCellPos, CellSlice s) {
+        double relX = (s.primaryPos.getX() - currentCellPos.getX()) + (s.offsetX / 16.0);
+        double relY = (s.primaryPos.getY() - currentCellPos.getY()) + (s.offsetY / 16.0);
+        double relZ = (s.primaryPos.getZ() - currentCellPos.getZ()) + (s.offsetZ / 16.0);
+
+        VoxelShape origOutline = SubGridPlacementHandler.getSafeOriginalOutlineShape(s.storedState, world, currentCellPos);
+        if (origOutline.isEmpty()) {
+            return VoxelShapes.empty();
+        }
+        return origOutline.offset(relX, relY, relZ);
+    }
+
+    /**
+     * Consulta directamente `s.storedState.getCollisionShape(world, pos)` del bloque vanilla original.
+     * - Si el bloque original no tiene colisión (Caña de azúcar, Pasto, Flores, Antorchas, Fuego, etc.),
+     *   su colisión es vacía (`VoxelShapes.empty()`), igual que en vanilla.
+     * - Si el bloque original sí tiene colisión, desplaza su `VoxelShape` real y lo recorta a `[0..1]^3` de esta celda.
+     */
+    public VoxelShape getDelegatedCollisionShape(BlockView world, BlockPos currentCellPos) {
         if (slices.isEmpty()) return VoxelShapes.empty();
-        return getCombinedShape();
+        if (cachedCollisionShape != null) return cachedCollisionShape;
+
+        VoxelShape totalCollision = VoxelShapes.empty();
+        VoxelShape cellBounds = VoxelShapes.fullCube();
+
+        for (CellSlice s : slices) {
+            VoxelShape origCollision = SubGridPlacementHandler.getSafeOriginalCollisionShape(s.storedState, world, currentCellPos);
+            if (origCollision.isEmpty()) {
+                continue;
+            }
+            double relX = (s.primaryPos.getX() - currentCellPos.getX()) + (s.offsetX / 16.0);
+            double relY = (s.primaryPos.getY() - currentCellPos.getY()) + (s.offsetY / 16.0);
+            double relZ = (s.primaryPos.getZ() - currentCellPos.getZ()) + (s.offsetZ / 16.0);
+
+            VoxelShape shifted = origCollision.offset(relX, relY, relZ);
+            VoxelShape clippedToCell = VoxelShapes.combineAndSimplify(shifted, cellBounds, BooleanBiFunction.AND);
+            if (!clippedToCell.isEmpty()) {
+                totalCollision = VoxelShapes.union(totalCollision, clippedToCell);
+            }
+        }
+
+        cachedCollisionShape = totalCollision;
+        return cachedCollisionShape;
     }
 
     @Nullable
@@ -153,16 +223,20 @@ public class SubGridBlockEntity extends BlockEntity {
         CellSlice closest = null;
         double minDistSq = Double.MAX_VALUE;
         for (CellSlice s : slices) {
-            Box box = new Box(
-                    pos.getX() + s.minX / 16.0, pos.getY() + s.minY / 16.0, pos.getZ() + s.minZ / 16.0,
-                    pos.getX() + s.maxX / 16.0, pos.getY() + s.maxY / 16.0, pos.getZ() + s.maxZ / 16.0
-            ).expand(0.004);
-            Optional<Vec3d> hit = box.raycast(eyePos, endPos);
-            if (hit.isPresent()) {
-                double d = eyePos.squaredDistanceTo(hit.get());
-                if (d < minDistSq) {
-                    minDistSq = d;
-                    closest = s;
+            double baseGx = s.primaryPos.getX() + s.offsetX / 16.0;
+            double baseGy = s.primaryPos.getY() + s.offsetY / 16.0;
+            double baseGz = s.primaryPos.getZ() + s.offsetZ / 16.0;
+
+            VoxelShape origOutline = SubGridPlacementHandler.getSafeOriginalOutlineShape(s.storedState, world, pos);
+            for (Box localBox : origOutline.getBoundingBoxes()) {
+                Box worldBox = localBox.offset(baseGx, baseGy, baseGz).expand(0.004);
+                Optional<Vec3d> hit = worldBox.raycast(eyePos, endPos);
+                if (hit.isPresent()) {
+                    double d = eyePos.squaredDistanceTo(hit.get());
+                    if (d < minDistSq) {
+                        minDistSq = d;
+                        closest = s;
+                    }
                 }
             }
         }
@@ -172,21 +246,15 @@ public class SubGridBlockEntity extends BlockEntity {
         return closest;
     }
 
-    /**
-     * Permite que todos los bloques interactuables (Mesas de trabajo, Palancas, Botones, Puertas,
-     * Trampillas, Lámparas, Repetidores, Bloques musicales, Cortapiedras, etc.) funcionen con normalidad
-     * dentro de la Sub-Grid, y aplica la lógica especial de Redstone según la Grid.
-     */
     public ActionResult interactWithTargetedSlice(World world, BlockPos pos, PlayerEntity player, Hand hand, BlockHitResult hit) {
         Vec3d eye = player.getEyePos();
         Vec3d look = player.getRotationVec(1.0F);
-        CellSlice target = raycastSlice(eye, eye.add(look.multiply(6.0)));
+        CellSlice target = raycastSlice(eye, eye.add(look.multiply(6.5)));
         if (target == null) return ActionResult.PASS;
 
-        // Si el jugador sostiene un bloque colocable y no está agachado, solo interceptar si el bloque apuntado es interactuable
         Block b = target.storedState.getBlock();
 
-        // 1. Estaciones de trabajo con interfaz (Crafting Table, Stonecutter, Loom, Cartography, Smithing, Anvil, Grindstone)
+        // 1. Estaciones de trabajo con interfaz nativa
         if (b instanceof CraftingTableBlock || b instanceof StonecutterBlock || b instanceof LoomBlock
                 || b instanceof CartographyTableBlock || b instanceof SmithingTableBlock
                 || b instanceof AnvilBlock || b instanceof GrindstoneBlock) {
@@ -199,12 +267,11 @@ public class SubGridBlockEntity extends BlockEntity {
             return ActionResult.SUCCESS;
         }
 
-        // 2. Palancas (Lever) y Botones (Button) con Micro-Ingeniería en Sub-Grid
+        // 2. Palancas, Botones y bloques con POWERED
         if (b instanceof LeverBlock || b instanceof ButtonBlock || target.storedState.contains(Properties.POWERED)) {
             if (!world.isClient) {
                 boolean newPowered;
                 if (target.gridStepPlaced <= 2 && b instanceof ButtonBlock) {
-                    // JUSTIFICACIÓN DE GRID 1/8: Cualquier botón colocado en Grid 1/8 actúa como un T-Flip-Flop (interruptor con memoria permanente)
                     target.toggleLatchPower = !target.toggleLatchPower;
                     newPowered = target.toggleLatchPower;
                     player.sendMessage(Text.literal("Micro-Memoria 1/8 (T-Flip-Flop): ")
@@ -224,8 +291,8 @@ public class SubGridBlockEntity extends BlockEntity {
             return ActionResult.SUCCESS;
         }
 
-        // 3. Trampillas, Puertas y Vallas (OPEN)
-        if (b instanceof TrapdoorBlock || b instanceof DoorBlock || target.storedState.contains(Properties.OPEN)) {
+        // 3. Trampillas, Puertas y Portones de Valla (OPEN)
+        if (b instanceof TrapdoorBlock || b instanceof DoorBlock || b instanceof FenceGateBlock || target.storedState.contains(Properties.OPEN)) {
             if (!world.isClient && target.storedState.contains(Properties.OPEN)) {
                 boolean open = !target.storedState.get(Properties.OPEN);
                 syncPartStateAcrossCells(world, target.partId, target.primaryPos,
@@ -236,13 +303,28 @@ public class SubGridBlockEntity extends BlockEntity {
             return ActionResult.SUCCESS;
         }
 
-        // 4. Repetidores de Redstone (DELAY)
+        // 4. Repetidores y Comparadores de Redstone
         if (b instanceof RepeaterBlock && target.storedState.contains(Properties.DELAY)) {
             if (!world.isClient) {
                 int nextDelay = (target.storedState.get(Properties.DELAY) % 4) + 1;
                 syncPartStateAcrossCells(world, target.partId, target.primaryPos,
                         target.storedState.with(Properties.DELAY, nextDelay), target.toggleLatchPower);
                 world.playSound(null, pos, SoundEvents.BLOCK_COMPARATOR_CLICK, SoundCategory.BLOCKS, 0.6f, 1.2f);
+            }
+            return ActionResult.SUCCESS;
+        }
+        if (b instanceof ComparatorBlock && target.storedState.contains(Properties.COMPARATOR_MODE)) {
+            if (!world.isClient) {
+                syncPartStateAcrossCells(world, target.partId, target.primaryPos,
+                        target.storedState.cycle(Properties.COMPARATOR_MODE), target.toggleLatchPower);
+                world.playSound(null, pos, SoundEvents.BLOCK_COMPARATOR_CLICK, SoundCategory.BLOCKS, 0.6f, 1.2f);
+            }
+            return ActionResult.SUCCESS;
+        }
+        if (b instanceof DaylightDetectorBlock && target.storedState.contains(Properties.INVERTED)) {
+            if (!world.isClient) {
+                syncPartStateAcrossCells(world, target.partId, target.primaryPos,
+                        target.storedState.cycle(Properties.INVERTED), target.toggleLatchPower);
             }
             return ActionResult.SUCCESS;
         }
@@ -265,8 +347,9 @@ public class SubGridBlockEntity extends BlockEntity {
             return ActionResult.SUCCESS;
         }
 
-        // 6. Lámpara de Redstone o Reenvío genérico
-        if (b instanceof RedstoneLampBlock && target.storedState.contains(Properties.LIT)) {
+        // 6. Lámpara de Redstone, Fogatas y Velas
+        if ((b instanceof RedstoneLampBlock || b instanceof CampfireBlock || b instanceof CandleBlock)
+                && target.storedState.contains(Properties.LIT)) {
             if (!world.isClient && player.getStackInHand(hand).isEmpty()) {
                 boolean lit = !target.storedState.get(Properties.LIT);
                 syncPartStateAcrossCells(world, target.partId, target.primaryPos,
@@ -281,7 +364,6 @@ public class SubGridBlockEntity extends BlockEntity {
 
     public void onExternalRedstoneUpdate(World world, BlockPos pos, boolean externalPowered) {
         if (externalPowered && !lastExternalPowered) {
-            // Si hay un bloque de Slime + Redstone en Sub-Grid ("Catapulta de Fase"), lanza a las entidades encima
             checkPhaseLaunchPad(world, pos);
         }
         lastExternalPowered = externalPowered;
@@ -327,12 +409,6 @@ public class SubGridBlockEntity extends BlockEntity {
         }
     }
 
-    /**
-     * Calcula la potencia de Redstone emitida por las piezas en Sub-Grid:
-     * - Grid 1/2 (8): Potencia completa omnidireccional (15).
-     * - Grid 1/4 (4): Diodo direccional (solo emite hacia la dirección hacia la que está desplazada la pieza).
-     * - Grid 1/8 (2): Emite potencia 15 si su memoria T-Flip-Flop está activa.
-     */
     public int getEmittedRedstonePower(@Nullable Direction targetSide) {
         int maxPower = 0;
         for (CellSlice s : slices) {
@@ -349,7 +425,6 @@ public class SubGridBlockEntity extends BlockEntity {
             }
 
             if (p > 0 && targetSide != null && s.gridStepPlaced == 4) {
-                // En Grid 1/4 actúa como Diodo Direccional hacia el lado donde está desplazado el bloque
                 int dx = targetSide.getOffsetX();
                 int dy = targetSide.getOffsetY();
                 int dz = targetSide.getOffsetZ();
@@ -364,7 +439,7 @@ public class SubGridBlockEntity extends BlockEntity {
         return maxPower;
     }
 
-    private void syncPartStateAcrossCells(World world, UUID partId, BlockPos anchor, BlockState newState, boolean latch) {
+    public void syncPartStateAcrossCells(World world, UUID partId, BlockPos anchor, BlockState newState, boolean latch) {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 for (int dz = -1; dz <= 1; dz++) {
@@ -380,6 +455,7 @@ public class SubGridBlockEntity extends BlockEntity {
                             }
                         }
                         if (mod) {
+                            sg.cachedCollisionShape = null;
                             sg.recalculateBlockProperties();
                             sg.markDirtyAndSync();
                         }
@@ -409,6 +485,7 @@ public class SubGridBlockEntity extends BlockEntity {
     }
 
     public void markDirtyAndSync() {
+        cachedCollisionShape = null;
         markDirty();
         if (world != null && !world.isClient) {
             BlockState state = world.getBlockState(pos);
@@ -437,6 +514,7 @@ public class SubGridBlockEntity extends BlockEntity {
             tag.putLong("PrimaryPos", s.primaryPos.asLong());
             tag.putInt("GridStep", s.gridStepPlaced);
             tag.putBoolean("Latch", s.toggleLatchPower);
+            tag.putFloat("Yaw", s.yawDegrees);
             list.add(tag);
         }
         nbt.put("Slices", list);
@@ -460,10 +538,11 @@ public class SubGridBlockEntity extends BlockEntity {
                     tag.getInt("OffX"), tag.getInt("OffY"), tag.getInt("OffZ"),
                     BlockPos.fromLong(tag.getLong("PrimaryPos")),
                     tag.contains("GridStep") ? tag.getInt("GridStep") : 8,
-                    tag.getBoolean("Latch")
+                    tag.getBoolean("Latch"),
+                    tag.contains("Yaw") ? tag.getFloat("Yaw") : 0.0f
             ));
         }
-        cachedShape = null;
+        cachedCollisionShape = null;
     }
 
     @Nullable

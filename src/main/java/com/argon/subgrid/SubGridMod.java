@@ -10,6 +10,7 @@ import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityT
 import net.minecraft.block.AbstractBlock;
 import net.minecraft.block.Block;
 import net.minecraft.block.entity.BlockEntityType;
+import net.minecraft.block.piston.PistonBehavior;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemGroups;
@@ -34,15 +35,18 @@ public class SubGridMod implements ModInitializer {
 
     public static final Block SUBGRID_CONTAINER = new SubGridBlock(
             AbstractBlock.Settings.create()
+                    .solid()
                     .strength(1.5f, 6.0f)
                     .nonOpaque()
                     .dynamicBounds()
+                    .pistonBehavior(PistonBehavior.NORMAL)
                     .sounds(BlockSoundGroup.STONE)
                     .luminance(state -> state.get(SubGridBlock.LIGHT_LEVEL))
     );
 
     public static final Block SUBGRID_ACTUATOR = new SubGridActuatorBlock(
             AbstractBlock.Settings.create()
+                    .solid()
                     .strength(2.0f, 6.0f)
                     .sounds(BlockSoundGroup.METAL)
     );
@@ -86,16 +90,13 @@ public class SubGridMod implements ModInitializer {
             entries.add(PRECISION_CHISEL);
         });
 
-        // Recibir cambio de tamaño de Grid desde las 2 teclas del cliente
         ServerPlayNetworking.registerGlobalReceiver(SET_GRID_STEP_PACKET, (server, player, handler, buf, responseSender) -> {
             int newStep = buf.readInt();
             server.execute(() -> SubGridPlacementHandler.updatePlayerGridOnServer(player, newStep));
         });
 
-        // Interceptar colocación de bloques en Sub-Grid / Off-Grid o combinación de Slabs y Escaleras
         UseBlockCallback.EVENT.register(SubGridPlacementHandler::onUseBlock);
 
-        // Romper únicamente la pieza individual apuntada dentro de un bloque compuesto o Sub-Grid
         PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, blockEntity) -> {
             if (state.isOf(SUBGRID_CONTAINER) && blockEntity instanceof SubGridBlockEntity sgbe) {
                 if (player instanceof ServerPlayerEntity serverPlayer) {
@@ -105,9 +106,8 @@ public class SubGridMod implements ModInitializer {
             return true;
         });
 
-        // Pistones adaptativos en Sub-Grid y subida suave de micro-escalones
         ServerTickEvents.END_SERVER_TICK.register(SubGridPlacementHandler::tickServer);
 
-        LOGGER.info("Mod Sub-Grid & Off-Grid Micro-Architecture cargado correctamente.");
+        LOGGER.info("Mod Sub-Grid & Off-Grid Micro-Architecture v2.0.0 cargado correctamente.");
     }
 }

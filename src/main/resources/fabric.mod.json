@@ -3,7 +3,7 @@
   "id": "subgridmod",
   "version": "${version}",
   "name": "Sub-Grid & Off-Grid Micro-Architecture Mod",
-  "description": "Coloca cualquier bloque real en grillas de 1/2, 1/4, 1/8 y modo secreto Off-Grid (1/16) en los 3 ejes, combina Slabs/Escaleras, e integra Redstone y Pistones adaptativos.",
+  "description": "Coloca cualquier bloque original con todas sus propiedades vanilla (colisiones, bioma, gravedad, conexiones, fuego y redstone) en grillas 1/2, 1/4, 1/8 y modo secreto Off-Grid con rotacion Y libre.",
   "authors": [
     "Creado con Argon"
   ],
