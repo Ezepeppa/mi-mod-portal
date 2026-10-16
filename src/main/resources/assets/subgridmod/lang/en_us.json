@@ -1,0 +1,8 @@
+{
+  "block.subgridmod.subgrid_container": "Sub-Grid Composite Block",
+  "block.subgridmod.subgrid_actuator": "Sub-Grid Linear Actuator (Redstone)",
+  "item.subgridmod.precision_chisel": "3D Sub-Grid Precision Calibrator",
+  "key.subgridmod.grid_smaller": "Shrink Grid (1/1 -> 1/2 -> 1/4 -> 1/8 / Shift: Off-Grid)",
+  "key.subgridmod.grid_larger": "Enlarge Grid (Off-Grid -> 1/8 -> 1/4 -> 1/2 -> 1/1)",
+  "category.subgridmod.main": "Sub-Grid & Off-Grid Mod"
+}

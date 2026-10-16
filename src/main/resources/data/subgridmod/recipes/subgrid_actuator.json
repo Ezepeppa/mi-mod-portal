@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "IRI",
+    "QPQ",
+    "ICI"
+  ],
+  "key": {
+    "I": { "item": "minecraft:iron_ingot" },
+    "R": { "item": "minecraft:redstone" },
+    "Q": { "item": "minecraft:quartz" },
+    "P": { "item": "minecraft:sticky_piston" },
+    "C": { "item": "minecraft:comparator" }
+  },
+  "result": {
+    "item": "subgridmod:subgrid_actuator",
+    "count": 2
+  }
+}

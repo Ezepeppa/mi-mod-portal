@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "  Q",
+    " G ",
+    "I  "
+  ],
+  "key": {
+    "Q": { "item": "minecraft:quartz" },
+    "G": { "item": "minecraft:gold_ingot" },
+    "I": { "item": "minecraft:iron_ingot" }
+  },
+  "result": {
+    "item": "subgridmod:precision_chisel",
+    "count": 1
+  }
+}

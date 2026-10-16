@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "subgridmod:block/subgrid_container" }
+  }
+}
