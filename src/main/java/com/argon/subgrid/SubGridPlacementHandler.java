@@ -62,6 +62,7 @@ import net.minecraft.item.FireChargeItem;
 import net.minecraft.item.FlintAndSteelItem;
 import net.minecraft.item.ItemPlacementContext;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NbtCompound;
 import net.minecraft.predicate.entity.EntityPredicates;
 import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.server.MinecraftServer;
@@ -1014,7 +1015,7 @@ public class SubGridPlacementHandler {
 
     public static void placeAtGlobal16WithNbt(World world, int gx, int gy, int gz,
                                               BlockState stateToPlace, UUID partId, int gridStep,
-                                              boolean latch, float yawDegrees, @Nullable net.minecraft.nbt.NbtCompound savedBeNbt) {
+                                              boolean latch, float yawDegrees, @Nullable NbtCompound savedBeNbt) {
         BlockPos primaryPos = new BlockPos(Math.floorDiv(gx, 16), Math.floorDiv(gy, 16), Math.floorDiv(gz, 16));
         int primaryOffX = gx - primaryPos.getX() * 16;
         int primaryOffY = gy - primaryPos.getY() * 16;
@@ -1212,7 +1213,7 @@ public class SubGridPlacementHandler {
         int gridStep = primarySlice.gridStepPlaced;
         boolean latch = primarySlice.toggleLatchPower;
         float yaw = primarySlice.yawDegrees;
-        net.minecraft.nbt.NbtCompound savedNbt = (primarySlice.innerBlockEntity != null)
+        NbtCompound savedNbt = (primarySlice.innerBlockEntity != null)
                 ? primarySlice.innerBlockEntity.createNbt()
                 : primarySlice.savedInnerBeNbt;
 
