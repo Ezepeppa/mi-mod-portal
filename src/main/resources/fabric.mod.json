@@ -3,7 +3,7 @@
   "id": "subgridmod",
   "version": "${version}",
   "name": "Sub-Grid & Off-Grid Micro-Architecture Mod",
-  "description": "Coloca cualquier bloque original con todas sus propiedades vanilla (colisiones, bioma, gravedad, conexiones, fuego y redstone) en grillas 1/2, 1/4, 1/8 y modo secreto Off-Grid con rotacion Y libre.",
+  "description": "Arquitectura v4.0.0 con Mixins, BlockEntities nativos reales (libro de encantamientos, cofres, hornos), colisiones OBB rotadas (SAT), supervivencia vanilla real y compatibilidad con Portal & Gravity Gun.",
   "authors": [
     "Creado con Argon"
   ],
@@ -17,6 +17,9 @@
       "com.argon.subgrid.SubGridClient"
     ]
   },
+  "mixins": [
+    "subgridmod.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=0.14.21",
     "minecraft": "~1.20.1",

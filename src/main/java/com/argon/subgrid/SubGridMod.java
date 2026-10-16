@@ -39,7 +39,7 @@ public class SubGridMod implements ModInitializer {
                     .strength(1.5f, 6.0f)
                     .nonOpaque()
                     .dynamicBounds()
-                    .pistonBehavior(PistonBehavior.NORMAL)
+                    .pistonBehavior(PistonBehavior.BLOCK)
                     .sounds(BlockSoundGroup.STONE)
                     .luminance(state -> state.get(SubGridBlock.LIGHT_LEVEL))
     );
@@ -56,7 +56,6 @@ public class SubGridMod implements ModInitializer {
 
     public static BlockEntityType<SubGridBlockEntity> SUBGRID_BLOCK_ENTITY;
 
-    // Tamaño de la grid por jugador en dieciseisavos: 16 (1/1 Normal), 8 (1/2), 4 (1/4), 2 (1/8), 1 (Modo Secreto Off-Grid)
     private static final Map<UUID, Integer> PLAYER_GRID_STEP = new HashMap<>();
 
     public static int getPlayerGridStep(UUID playerUuid) {
@@ -108,6 +107,6 @@ public class SubGridMod implements ModInitializer {
 
         ServerTickEvents.END_SERVER_TICK.register(SubGridPlacementHandler::tickServer);
 
-        LOGGER.info("Mod Sub-Grid & Off-Grid Micro-Architecture v2.0.0 cargado correctamente.");
+        LOGGER.info("Mod Sub-Grid & Off-Grid Micro-Architecture v4.0.0 cargado correctamente.");
     }
 }

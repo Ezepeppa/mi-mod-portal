@@ -2,6 +2,7 @@ package com.argon.subgrid;
 
 import net.minecraft.block.BlockRenderType;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.OverlayTexture;
 import net.minecraft.client.render.RenderLayers;
@@ -41,16 +42,15 @@ public class SubGridBlockEntityRenderer implements BlockEntityRenderer<SubGridBl
                     slice.offsetZ / 16.0
             );
 
-            // Si tiene rotación Off-Grid en el eje Y, rotar respecto al centro horizontal del bloque (0.5, 0.0, 0.5)
             if (Math.abs(slice.yawDegrees) > 0.01f) {
                 matrices.translate(0.5, 0.0, 0.5);
                 matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(slice.yawDegrees));
                 matrices.translate(-0.5, 0.0, -0.5);
             }
 
+            // 1. Renderizar el modelo estático del bloque con tinte real del bioma
             if (state.getRenderType() == BlockRenderType.MODEL) {
                 BakedModel model = brm.getModel(state);
-                // Consultar el color real del bioma en (entity.getWorld(), entity.getPos()) para Pasto, Caña de azúcar, Hojas, Agua, etc.
                 int color = client.getBlockColors().getColor(state, entity.getWorld(), entity.getPos(), 0);
                 float r = (color != -1) ? ((color >> 16) & 0xFF) / 255.0f : 1.0f;
                 float g = (color != -1) ? ((color >> 8) & 0xFF) / 255.0f : 1.0f;
@@ -66,7 +66,22 @@ public class SubGridBlockEntityRenderer implements BlockEntityRenderer<SubGridBl
                         effectiveLight,
                         OverlayTexture.DEFAULT_UV
                 );
-            } else {
+            }
+
+            // 2. FUNDAMENTAL: Si el bloque tiene un BlockEntity nativo (Mesa de Encantamientos, Cofre, Campana, Cama, Cartel, etc.),
+            // obtener su BlockEntityRenderer real y renderizarlo (para que la Mesa de Encantamientos tenga su libro flotante animado!)
+            BlockEntity innerBe = slice.getOrCreateInnerBlockEntity(entity.getWorld());
+            if (innerBe != null) {
+                try {
+                    BlockEntityRenderer<BlockEntity> ber = client.getBlockEntityRenderDispatcher().get(innerBe);
+                    if (ber != null) {
+                        ber.render(innerBe, tickDelta, matrices, vertexConsumers, effectiveLight, OverlayTexture.DEFAULT_UV);
+                    } else if (state.getRenderType() != BlockRenderType.MODEL) {
+                        brm.renderBlockAsEntity(state, matrices, vertexConsumers, effectiveLight, OverlayTexture.DEFAULT_UV);
+                    }
+                } catch (Exception ignored) {
+                }
+            } else if (state.getRenderType() != BlockRenderType.MODEL) {
                 brm.renderBlockAsEntity(state, matrices, vertexConsumers, effectiveLight, OverlayTexture.DEFAULT_UV);
             }
 

@@ -8,25 +8,34 @@ import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.DoorBlock;
 import net.minecraft.block.SlabBlock;
 import net.minecraft.block.StairsBlock;
+import net.minecraft.block.TallPlantBlock;
+import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.block.enums.DoubleBlockHalf;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.WorldRenderer;
 import net.minecraft.client.render.block.entity.BlockEntityRendererFactories;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.PacketByteBuf;
+import net.minecraft.state.property.Properties;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.RotationAxis;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.shape.VoxelShape;
 import org.joml.Matrix4f;
 import org.lwjgl.glfw.GLFW;
 
@@ -56,6 +65,24 @@ public class SubGridClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.player == null || client.world == null) return;
+
+            // Ejecutar el tick de animación en cliente de los BlockEntities nativos dentro de SubGrid (ej. libro flotante de Mesa de Encantamientos!)
+            BlockPos center = client.player.getBlockPos();
+            for (int dx = -5; dx <= 5; dx++) {
+                for (int dy = -3; dy <= 3; dy++) {
+                    for (int dz = -5; dz <= 5; dz++) {
+                        BlockPos bp = center.add(dx, dy, dz);
+                        BlockEntity be = client.world.getBlockEntity(bp);
+                        if (be instanceof SubGridBlockEntity sgbe) {
+                            for (SubGridBlockEntity.CellSlice s : sgbe.getSlices()) {
+                                if (s.renderHere) {
+                                    s.tickInnerBlockEntity(client.world);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             boolean shrinkPressed = false;
             while (shrinkGridKey.wasPressed()) {
@@ -92,6 +119,67 @@ public class SubGridClient implements ClientModInitializer {
             }
         });
 
+        // Contorno negro nativo de selección (`RenderLayer.getLines()` + `WorldRenderer.drawBox`)
+        // con la MISMA transformación de MatrixStack y rotación `yawDegrees` que el renderizador del bloque!
+        WorldRenderEvents.BEFORE_BLOCK_OUTLINE.register((context, hitResult) -> {
+            MinecraftClient client = MinecraftClient.getInstance();
+            if (client.player == null || client.world == null || !(hitResult instanceof BlockHitResult bhr)) {
+                return true;
+            }
+            BlockPos pos = bhr.getBlockPos();
+            BlockState state = client.world.getBlockState(pos);
+            if (!state.isOf(SubGridMod.SUBGRID_CONTAINER)) {
+                return true;
+            }
+            BlockEntity be = client.world.getBlockEntity(pos);
+            if (!(be instanceof SubGridBlockEntity sgbe)) {
+                return true;
+            }
+
+            Vec3d eye = client.player.getEyePos();
+            Vec3d end = eye.add(client.player.getRotationVec(1.0F).multiply(6.5));
+            SubGridBlockEntity.CellSlice target = sgbe.raycastSlice(eye, end);
+            if (target == null) {
+                return true;
+            }
+
+            MatrixStack matrices = context.matrixStack();
+            VertexConsumerProvider consumers = context.consumers();
+            if (matrices == null || consumers == null) {
+                return true;
+            }
+
+            Vec3d cam = context.camera().getPos();
+            VertexConsumer vc = consumers.getBuffer(RenderLayer.getLines());
+
+            double baseGx = target.primaryPos.getX() + target.offsetX / 16.0;
+            double baseGy = target.primaryPos.getY() + target.offsetY / 16.0;
+            double baseGz = target.primaryPos.getZ() + target.offsetZ / 16.0;
+
+            matrices.push();
+            matrices.translate(baseGx - cam.x, baseGy - cam.y, baseGz - cam.z);
+            if (Math.abs(target.yawDegrees) > 0.01f) {
+                matrices.translate(0.5, 0.0, 0.5);
+                matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(target.yawDegrees));
+                matrices.translate(-0.5, 0.0, -0.5);
+            }
+
+            VoxelShape origOutline = SubGridPlacementHandler.getSafeOriginalOutlineShape(target.storedState, client.world, pos);
+            for (Box localBox : origOutline.getBoundingBoxes()) {
+                Box drawB = localBox;
+                if (target.storedState.getBlock() instanceof DoorBlock && target.storedState.contains(DoorBlock.HALF)) {
+                    if (target.storedState.get(DoorBlock.HALF) == DoubleBlockHalf.LOWER) {
+                        drawB = new Box(localBox.minX, localBox.minY, localBox.minZ, localBox.maxX, localBox.maxY + 1.0, localBox.maxZ);
+                    } else {
+                        drawB = new Box(localBox.minX, localBox.minY - 1.0, localBox.minZ, localBox.maxX, localBox.maxY, localBox.maxZ);
+                    }
+                }
+                WorldRenderer.drawBox(matrices, vc, drawB.expand(0.002), 0.0f, 0.0f, 0.0f, 0.4f);
+            }
+            matrices.pop();
+            return false; // Cancelar el outline vanilla sin rotar
+        });
+
         WorldRenderEvents.AFTER_ENTITIES.register(this::renderSubtlePlacementPreview);
     }
 
@@ -102,10 +190,6 @@ public class SubGridClient implements ClientModInitializer {
         ClientPlayNetworking.send(SubGridMod.SET_GRID_STEP_PACKET, buf);
     }
 
-    /**
-     * Dibuja una previsualización arquitectónica 3D muy sutil y no invasiva (sin partículas),
-     * mostrando las aristas exactas del bloque y su rotación libre en el eje Y cuando está en modo Off-Grid.
-     */
     private void renderSubtlePlacementPreview(WorldRenderContext context) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null || client.world == null || client.currentScreen != null) return;
@@ -138,10 +222,23 @@ public class SubGridClient implements ClientModInitializer {
         );
         if (desiredState == null) return;
 
-        int[] globalOrigin16 = SubGridPlacementHandler.computeGlobalOrigin16(blockHit, desiredState, effectiveStep, client.world);
-        boolean valid = SubGridPlacementHandler.canPlaceAtGlobal16(
-                client.world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2], desiredState, null, true
+        int[] globalOrigin16 = SubGridPlacementHandler.computeGlobalOrigin16(blockHit, desiredState, effectiveStep, client.world, client.player);
+        float yawDeg = (effectiveStep == 1) ? MathHelper.wrapDegrees(180.0f - client.player.getYaw()) : 0.0f;
+
+        boolean canSurvive = SubGridPlacementHandler.canBlockSurviveNative(
+                client.world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2], desiredState, null
         );
+        boolean valid = canSurvive && SubGridPlacementHandler.canPlaceAtGlobal16(
+                client.world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2], desiredState, yawDeg, null, true
+        );
+        if (valid && (desiredState.getBlock() instanceof DoorBlock || desiredState.getBlock() instanceof TallPlantBlock)) {
+            BlockState upperState = desiredState.contains(Properties.DOUBLE_BLOCK_HALF)
+                    ? desiredState.with(Properties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER)
+                    : desiredState;
+            valid = SubGridPlacementHandler.canPlaceAtGlobal16(
+                    client.world, globalOrigin16[0], globalOrigin16[1] + 16, globalOrigin16[2], upperState, yawDeg, null, true
+            );
+        }
 
         MatrixStack matrices = context.matrixStack();
         VertexConsumerProvider consumers = context.consumers();
@@ -160,18 +257,18 @@ public class SubGridClient implements ClientModInitializer {
         int alpha = valid ? 72 : 85;
         double lineThickness = 0.0055;
 
-        float yawDeg = (effectiveStep == 1) ? MathHelper.wrapDegrees(180.0f - client.player.getYaw()) : 0.0f;
         double pivotX = (globalOrigin16[0] + 8.0) / 16.0;
         double pivotZ = (globalOrigin16[2] + 8.0) / 16.0;
 
         List<int[]> localBoxes = SubGridPlacementHandler.getLocalBoxes16(desiredState, client.world);
         for (int[] lb : localBoxes) {
+            int maxY = (desiredState.getBlock() instanceof DoorBlock || desiredState.getBlock() instanceof TallPlantBlock) ? 32 : lb[4];
             Box worldBox = new Box(
                     (globalOrigin16[0] + lb[0]) / 16.0,
                     (globalOrigin16[1] + lb[1]) / 16.0,
                     (globalOrigin16[2] + lb[2]) / 16.0,
                     (globalOrigin16[0] + lb[3]) / 16.0,
-                    (globalOrigin16[1] + lb[4]) / 16.0,
+                    (globalOrigin16[1] + maxY) / 16.0,
                     (globalOrigin16[2] + lb[5]) / 16.0
             ).expand(0.0015);
             drawSubtleWireframeBoxRotated(vc, mat, worldBox, pivotX, pivotZ, yawDeg, lineThickness, r, g, b, alpha);

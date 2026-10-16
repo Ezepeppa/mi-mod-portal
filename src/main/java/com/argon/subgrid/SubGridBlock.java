@@ -3,9 +3,14 @@ package com.argon.subgrid;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockEntityProvider;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.CactusBlock;
+import net.minecraft.block.LadderBlock;
+import net.minecraft.block.ScaffoldingBlock;
 import net.minecraft.block.ShapeContext;
+import net.minecraft.block.VineBlock;
 import net.minecraft.block.Waterloggable;
 import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.fluid.Fluids;
@@ -71,10 +76,6 @@ public class SubGridBlock extends Block implements BlockEntityProvider, Waterlog
         return super.getStateForNeighborUpdate(state, direction, neighborState, world, pos, neighborPos);
     }
 
-    /**
-     * Delega la velocidad de rotura y requerimiento de herramienta directamente al bloque vanilla original apuntado.
-     * Bloques instantáneos como Caña de azúcar, Pasto, Flores, Antorchas o Fuego se rompen al instante.
-     */
     @Override
     public float calcBlockBreakingDelta(BlockState state, PlayerEntity player, BlockView world, BlockPos pos) {
         BlockEntity be = world.getBlockEntity(pos);
@@ -99,11 +100,6 @@ public class SubGridBlock extends Block implements BlockEntityProvider, Waterlog
         return ItemStack.EMPTY;
     }
 
-    /**
-     * Devuelve el contorno (Outline) COMPLETO y SIN RECORTAR del bloque original almacenado,
-     * de modo que al apuntar con la mano vacía (o cualquier ítem) se marque el bloque entero 1x1x1
-     * aunque sobresalga a celdas vecinas, igual que un bloque vanilla común.
-     */
     @Override
     public VoxelShape getOutlineShape(BlockState state, BlockView world, BlockPos pos, ShapeContext context) {
         BlockEntity be = world.getBlockEntity(pos);
@@ -116,11 +112,6 @@ public class SubGridBlock extends Block implements BlockEntityProvider, Waterlog
         return VoxelShapes.fullCube();
     }
 
-    /**
-     * Delega la colisión física directamente a `storedState.getCollisionShape(world, pos)` de cada pieza.
-     * Si el bloque original no tiene colisión (Caña de azúcar, Pasto, Flores, Antorchas, Fuego, etc.),
-     * devuelve `VoxelShapes.empty()` automáticamente.
-     */
     @Override
     public VoxelShape getCollisionShape(BlockState state, BlockView world, BlockPos pos, ShapeContext context) {
         BlockEntity be = world.getBlockEntity(pos);
@@ -130,11 +121,54 @@ public class SubGridBlock extends Block implements BlockEntityProvider, Waterlog
         return VoxelShapes.empty();
     }
 
-    /**
-     * Si el bloque contenedor es reemplazado por cualquier causa externa (explosiones, comandos, agua, etc.),
-     * limpia automáticamente todas las porciones vinculadas (`partId`) en las celdas vecinas para que
-     * JAMÁS queden hitboxes invisibles huérfanas.
-     */
+    @Override
+    public void onEntityCollision(BlockState state, World world, BlockPos pos, Entity entity) {
+        BlockEntity be = world.getBlockEntity(pos);
+        if (be instanceof SubGridBlockEntity sgbe) {
+            for (SubGridBlockEntity.CellSlice s : sgbe.getSlices()) {
+                Block b = s.storedState.getBlock();
+                if (b instanceof CactusBlock) {
+                    entity.damage(world.getDamageSources().cactus(), 1.0f);
+                } else if (b instanceof LadderBlock || b instanceof VineBlock || b instanceof ScaffoldingBlock) {
+                    if (entity.horizontalCollision || entity.isSneaking()) {
+                        Vec3d vel = entity.getVelocity();
+                        double climbY = entity.isSneaking() ? 0.0 : Math.max(vel.y, 0.2);
+                        entity.setVelocity(vel.x * 0.7, climbY, vel.z * 0.7);
+                        entity.fallDistance = 0.0f;
+                    }
+                } else {
+                    int gx = s.primaryPos.getX() * 16 + s.offsetX;
+                    int gy = s.primaryPos.getY() * 16 + s.offsetY;
+                    int gz = s.primaryPos.getZ() * 16 + s.offsetZ;
+                    SubGridWorldContext.runWithVirtualContextVoid(world, gx, gy, gz, s.storedState, s, s.partId, () -> {
+                        try {
+                            s.storedState.onEntityCollision(world, s.primaryPos, entity);
+                        } catch (Exception ignored) {
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    @Override
+    public void onSteppedOn(World world, BlockPos pos, BlockState state, Entity entity) {
+        BlockEntity be = world.getBlockEntity(pos);
+        if (be instanceof SubGridBlockEntity sgbe) {
+            for (SubGridBlockEntity.CellSlice s : sgbe.getSlices()) {
+                int gx = s.primaryPos.getX() * 16 + s.offsetX;
+                int gy = s.primaryPos.getY() * 16 + s.offsetY;
+                int gz = s.primaryPos.getZ() * 16 + s.offsetZ;
+                SubGridWorldContext.runWithVirtualContextVoid(world, gx, gy, gz, s.storedState, s, s.partId, () -> {
+                    try {
+                        s.storedState.getBlock().onSteppedOn(world, s.primaryPos, s.storedState, entity);
+                    } catch (Exception ignored) {
+                    }
+                });
+            }
+        }
+    }
+
     @Override
     public void onStateReplaced(BlockState state, World world, BlockPos pos, BlockState newState, boolean moved) {
         if (!state.isOf(newState.getBlock())) {

@@ -57,7 +57,7 @@ public class PrecisionChiselItem extends Item {
                 } else if (slice.storedState.getBlock() instanceof StairsBlock) {
                     BlockHalf cur = slice.storedState.get(StairsBlock.HALF);
                     BlockState flipped = slice.storedState.with(StairsBlock.HALF, cur == BlockHalf.BOTTOM ? BlockHalf.TOP : BlockHalf.BOTTOM);
-                    sgbe.syncPartStateAcrossCells(world, slice.partId, slice.primaryPos, flipped, slice.toggleLatchPower);
+                    SubGridPlacementHandler.rebuildPartWithNewState(world, slice.primaryPos, slice.partId, flipped, slice.toggleLatchPower);
                     world.playSound(null, pos, SoundEvents.BLOCK_STONE_PLACE, SoundCategory.BLOCKS, 0.8f, 1.3f);
                 }
             }

@@ -1,38 +1,72 @@
 package com.argon.subgrid;
 
+import net.minecraft.block.AbstractFurnaceBlock;
+import net.minecraft.block.AbstractPressurePlateBlock;
+import net.minecraft.block.AbstractRailBlock;
+import net.minecraft.block.AbstractRedstoneGateBlock;
 import net.minecraft.block.AnvilBlock;
+import net.minecraft.block.BambooBlock;
+import net.minecraft.block.BambooShootBlock;
+import net.minecraft.block.BannerBlock;
+import net.minecraft.block.BarrelBlock;
+import net.minecraft.block.BedBlock;
 import net.minecraft.block.BellBlock;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockEntityProvider;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.BrewingStandBlock;
 import net.minecraft.block.ButtonBlock;
+import net.minecraft.block.CactusBlock;
+import net.minecraft.block.CakeBlock;
 import net.minecraft.block.CampfireBlock;
 import net.minecraft.block.CandleBlock;
+import net.minecraft.block.CarpetBlock;
 import net.minecraft.block.CartographyTableBlock;
+import net.minecraft.block.ChestBlock;
 import net.minecraft.block.ComparatorBlock;
+import net.minecraft.block.ComposterBlock;
 import net.minecraft.block.CraftingTableBlock;
 import net.minecraft.block.DaylightDetectorBlock;
+import net.minecraft.block.DeadBushBlock;
+import net.minecraft.block.DispenserBlock;
 import net.minecraft.block.DoorBlock;
+import net.minecraft.block.EnchantingTableBlock;
+import net.minecraft.block.EnderChestBlock;
 import net.minecraft.block.FallingBlock;
 import net.minecraft.block.FenceBlock;
 import net.minecraft.block.FenceGateBlock;
 import net.minecraft.block.GrindstoneBlock;
+import net.minecraft.block.HopperBlock;
 import net.minecraft.block.HorizontalConnectingBlock;
+import net.minecraft.block.LadderBlock;
 import net.minecraft.block.LeverBlock;
 import net.minecraft.block.LoomBlock;
 import net.minecraft.block.NoteBlock;
 import net.minecraft.block.PaneBlock;
 import net.minecraft.block.PistonBlock;
+import net.minecraft.block.PlantBlock;
 import net.minecraft.block.RedstoneLampBlock;
+import net.minecraft.block.RedstoneWireBlock;
 import net.minecraft.block.RepeaterBlock;
+import net.minecraft.block.ShulkerBoxBlock;
+import net.minecraft.block.SignBlock;
 import net.minecraft.block.SlabBlock;
 import net.minecraft.block.SmithingTableBlock;
+import net.minecraft.block.SnowBlock;
 import net.minecraft.block.StairsBlock;
 import net.minecraft.block.StonecutterBlock;
+import net.minecraft.block.SugarCaneBlock;
+import net.minecraft.block.TallPlantBlock;
+import net.minecraft.block.TorchBlock;
 import net.minecraft.block.TrapdoorBlock;
 import net.minecraft.block.WallBlock;
+import net.minecraft.block.WallMountedBlock;
+import net.minecraft.block.WallSignBlock;
+import net.minecraft.block.WallTorchBlock;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.enums.BlockHalf;
+import net.minecraft.block.enums.DoubleBlockHalf;
 import net.minecraft.block.enums.SlabType;
 import net.minecraft.block.enums.WallShape;
 import net.minecraft.entity.TntEntity;
@@ -113,7 +147,19 @@ public class SubGridPlacementHandler {
         BlockPos hitPos = hitResult.getBlockPos();
         BlockState clickedState = world.getBlockState(hitPos);
 
-        // 1. Soporte para Mechero (Flint and Steel) y Carga Ígnea (Fire Charge) sobre bloques en Sub-Grid / Off-Grid
+        // 1. Si el jugador hace clic derecho sobre un bloque funcional dentro del SubGridBlock sin agacharse, USAR el bloque funcional!
+        if (!player.isSneaking() && clickedState.isOf(SubGridMod.SUBGRID_CONTAINER)) {
+            BlockEntity be = world.getBlockEntity(hitPos);
+            if (be instanceof SubGridBlockEntity sgbe) {
+                Vec3d eye = player.getEyePos();
+                SubGridBlockEntity.CellSlice targeted = sgbe.raycastSlice(eye, eye.add(player.getRotationVec(1.0F).multiply(6.5)));
+                if (targeted != null && isInteractiveBlock(targeted.storedState.getBlock())) {
+                    return sgbe.interactWithTargetedSlice(world, hitPos, player, hand, hitResult);
+                }
+            }
+        }
+
+        // 2. Soporte para Mechero y Carga Ígnea sobre bloques en Sub-Grid / Off-Grid
         if (stack.getItem() instanceof FlintAndSteelItem || stack.getItem() instanceof FireChargeItem) {
             if (clickedState.isOf(SubGridMod.SUBGRID_CONTAINER)) {
                 return handleFireIgnitionOnSubGrid(player, world, hand, stack, hitPos, hitResult);
@@ -130,18 +176,6 @@ public class SubGridPlacementHandler {
             return ActionResult.PASS;
         }
 
-        // Si el jugador hace clic derecho normal sobre una pieza interactuable dentro del SubGridBlock sin agacharse, usarla
-        if (!player.isSneaking() && clickedState.isOf(SubGridMod.SUBGRID_CONTAINER)) {
-            BlockEntity be = world.getBlockEntity(hitPos);
-            if (be instanceof SubGridBlockEntity sgbe) {
-                Vec3d eye = player.getEyePos();
-                SubGridBlockEntity.CellSlice targeted = sgbe.raycastSlice(eye, eye.add(player.getRotationVec(1.0F).multiply(6.5)));
-                if (targeted != null && isInteractiveBlock(targeted.storedState.getBlock())) {
-                    return sgbe.interactWithTargetedSlice(world, hitPos, player, hand, hitResult);
-                }
-            }
-        }
-
         int gridStep = world.isClient
                 ? SubGridClientState.currentGridStep
                 : SubGridMod.getPlayerGridStep(player.getUuid());
@@ -151,7 +185,7 @@ public class SubGridPlacementHandler {
                 || clickedState.isOf(SubGridMod.SUBGRID_CONTAINER))
                 && (blockToPlace instanceof SlabBlock || blockToPlace instanceof StairsBlock);
 
-        // Si está en Grid 1/1 normal y no está combinando Slabs/Escaleras, dejar que Minecraft Vanilla coloque el bloque original puro!
+        // En Grid 1/1 normal (si no está combinando dos Slabs/Escaleras en la misma celda), dejar que Vanilla coloque el bloque original puro!
         if (gridStep == 16 && !combiningWithExistingSlabOrStair) {
             return ActionResult.PASS;
         }
@@ -159,39 +193,30 @@ public class SubGridPlacementHandler {
         int effectiveStep = (gridStep == 16 && combiningWithExistingSlabOrStair) ? 8 : gridStep;
         BlockState placementState = getDesiredBlockState(player, world, hand, stack, blockItem, hitResult, effectiveStep);
         if (placementState == null) {
-            return ActionResult.PASS;
+            return ActionResult.FAIL;
         }
 
-        int[] globalOrigin16 = computeGlobalOrigin16(hitResult, placementState, effectiveStep, world);
+        int[] globalOrigin16 = computeGlobalOrigin16(hitResult, placementState, effectiveStep, world, player);
         float yawDegrees = (effectiveStep == 1) ? MathHelper.wrapDegrees(180.0f - player.getYaw()) : 0.0f;
 
-        // Si las coordenadas calculadas caen exactamente en la grilla vanilla (múltiplo de 16 en X, Y, Z y sin rotación Off-Grid)
-        // y la celda de destino está libre, colocar directamente el bloque Vanilla original en el mundo!
-        if (globalOrigin16[0] % 16 == 0 && globalOrigin16[1] % 16 == 0 && globalOrigin16[2] % 16 == 0
-                && Math.abs(yawDegrees) < 0.01f && !combiningWithExistingSlabOrStair) {
-            BlockPos exactPos = new BlockPos(globalOrigin16[0] / 16, globalOrigin16[1] / 16, globalOrigin16[2] / 16);
-            BlockState existingAtExact = world.getBlockState(exactPos);
-            if ((existingAtExact.isAir() || existingAtExact.isReplaceable()) && !existingAtExact.isOf(SubGridMod.SUBGRID_CONTAINER)) {
-                if (!canPlaceAtGlobal16(world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2], placementState, null, true)) {
-                    return ActionResult.FAIL;
-                }
-                if (!world.isClient) {
-                    BlockState connectedVanilla = updateConnectionsForState(world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2], placementState, null);
-                    world.setBlockState(exactPos, connectedVanilla, Block.NOTIFY_ALL);
-                    connectedVanilla.getBlock().onPlaced(world, exactPos, connectedVanilla, player, stack);
-                    BlockSoundGroup sg = connectedVanilla.getSoundGroup();
-                    world.playSound(null, exactPos, sg.getPlaceSound(), SoundCategory.BLOCKS, (sg.getVolume() + 1.0f) / 2.0f, sg.getPitch() * 0.8f);
-                    if (!player.getAbilities().creativeMode) {
-                        stack.decrement(1);
-                    }
-                }
-                return ActionResult.SUCCESS;
-            }
+        // Verificar mediante `SubGridWorldContext` + `WorldMixin` si el método NATIVO `placementState.canPlaceAt(world, basePos)` lo permite!
+        if (!canBlockSurviveNative(world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2], placementState, null)) {
+            return ActionResult.FAIL;
         }
 
-        // Verificar que no haya solapamiento con bloques ni con el jugador/entidades paradas en ese lugar
-        if (!canPlaceAtGlobal16(world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2], placementState, null, true)) {
-            return ActionResult.FAIL;
+        boolean isDoubleTall = (placementState.getBlock() instanceof DoorBlock) || (placementState.getBlock() instanceof TallPlantBlock);
+        if (isDoubleTall) {
+            BlockState upperState = placementState.contains(Properties.DOUBLE_BLOCK_HALF)
+                    ? placementState.with(Properties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER)
+                    : placementState;
+            if (!canPlaceAtGlobal16(world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2], placementState, yawDegrees, null, true)
+                    || !canPlaceAtGlobal16(world, globalOrigin16[0], globalOrigin16[1] + 16, globalOrigin16[2], upperState, yawDegrees, null, true)) {
+                return ActionResult.FAIL;
+            }
+        } else {
+            if (!canPlaceAtGlobal16(world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2], placementState, yawDegrees, null, true)) {
+                return ActionResult.FAIL;
+            }
         }
 
         if (!world.isClient) {
@@ -199,6 +224,13 @@ public class SubGridPlacementHandler {
             BlockState connectedState = updateConnectionsForState(world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2], placementState, newPartId);
             placeAtGlobal16(world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2],
                     connectedState, newPartId, effectiveStep, false, yawDegrees);
+
+            if (isDoubleTall && connectedState.contains(Properties.DOUBLE_BLOCK_HALF)) {
+                BlockState upperState = connectedState.with(Properties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER);
+                placeAtGlobal16(world, globalOrigin16[0], globalOrigin16[1] + 16, globalOrigin16[2],
+                        upperState, newPartId, effectiveStep, false, yawDegrees);
+            }
+
             updateNeighborConnectionsAround(world, globalOrigin16[0], globalOrigin16[1], globalOrigin16[2]);
 
             BlockSoundGroup sg = connectedState.getSoundGroup();
@@ -209,6 +241,249 @@ public class SubGridPlacementHandler {
             }
         }
         return ActionResult.SUCCESS;
+    }
+
+    /**
+     * Ejecuta el método NATIVO `state.canPlaceAt(world, basePos)` de Minecraft Vanilla dentro de `SubGridWorldContext`
+     * (de modo que `WorldMixin` traduzca las consultas a `basePos.down()`, `basePos.north()`, fluidos, etc. a la Sub-Grid real).
+     * Incluye además una verificación explícita de soporte inferior/lateral cuando el bloque está desplazado dentro de una celda.
+     */
+    public static boolean canBlockSurviveNative(World world, int gx, int gy, int gz,
+                                                BlockState state, @Nullable UUID ignorePartId) {
+        BlockPos basePos = new BlockPos(Math.floorDiv(gx, 16), Math.floorDiv(gy, 16), Math.floorDiv(gz, 16));
+        boolean nativeOk = SubGridWorldContext.runWithVirtualContext(world, gx, gy, gz, state, null, ignorePartId, () -> {
+            try {
+                return state.canPlaceAt(world, basePos);
+            } catch (Exception e) {
+                return true;
+            }
+        });
+        if (!nativeOk) return false;
+
+        // Si es mitad superior de una puerta o planta doble, verificar que la mitad inferior exista en gy - 16
+        if (state.contains(Properties.DOUBLE_BLOCK_HALF) && state.get(Properties.DOUBLE_BLOCK_HALF) == DoubleBlockHalf.UPPER) {
+            BlockState below = getRelativeSubGridState16(world, gx, gy, gz, 0, -1, 0, null);
+            return below.isOf(state.getBlock());
+        }
+        return true;
+    }
+
+    /**
+     * Traduce una consulta relativa `(dx, dy, dz)` desde `WorldMixin` a las coordenadas reales de Sub-Grid `(gx, gy, gz)`.
+     * - Para `dy == -1, dx == 0, dz == 0` (`pos.down()`), verifica que exista un bloque cuya cara superior toque exactamente `gy`!
+     *   Si el bloque está flotando en el aire (ej. `gy % 16 != 0` sin pieza justo debajo), devuelve `Blocks.AIR`.
+     */
+    public static BlockState getRelativeSubGridState16(World world, int gx, int gy, int gz,
+                                                       int dx, int dy, int dz, @Nullable UUID ignorePartId) {
+        if (dx == 0 && dy == -1 && dz == 0) {
+            return getSupportingStateDirectlyBelow16(world, gx, gy, gz, ignorePartId);
+        }
+        if (dy == 0 && (Math.abs(dx) + Math.abs(dz) == 1)) {
+            return getFlushHorizontalNeighborState16(world, gx, gy, gz, dx, dz, ignorePartId);
+        }
+
+        int targetGx = gx + dx * 16 + 8;
+        int targetGy = gy + dy * 16 + 8;
+        int targetGz = gz + dz * 16 + 8;
+        BlockPos cellPos = new BlockPos(Math.floorDiv(targetGx, 16), Math.floorDiv(targetGy, 16), Math.floorDiv(targetGz, 16));
+        int lx = targetGx - cellPos.getX() * 16;
+        int ly = targetGy - cellPos.getY() * 16;
+        int lz = targetGz - cellPos.getZ() * 16;
+
+        BlockState cellState = world.getBlockState(cellPos);
+        if (cellState.isOf(SubGridMod.SUBGRID_CONTAINER)) {
+            BlockEntity be = world.getBlockEntity(cellPos);
+            if (be instanceof SubGridBlockEntity sgbe) {
+                for (SubGridBlockEntity.CellSlice s : sgbe.getSlices()) {
+                    if (ignorePartId != null && s.partId.equals(ignorePartId)) continue;
+                    if (lx >= s.minX && lx <= s.maxX && ly >= s.minY && ly <= s.maxY && lz >= s.minZ && lz <= s.maxZ) {
+                        return s.storedState;
+                    }
+                }
+            }
+            return Blocks.AIR.getDefaultState();
+        }
+        return cellState;
+    }
+
+    /**
+     * Devuelve el `BlockState` cuya superficie superior toca físicamente la base `gy` del bloque en `(gx, gy, gz)`.
+     * Si no hay ningún bloque tocando exactamente `gy - 1`, devuelve `Blocks.AIR` (así rieles, plantas, antorchas,
+     * alfombras, cañas y cactus flotando en el aire ven `Blocks.AIR` en `canPlaceAt` y se rompen!).
+     */
+    public static BlockState getSupportingStateDirectlyBelow16(World world, int gx, int gy, int gz, @Nullable UUID ignorePartId) {
+        int checkY = gy - 1;
+        int cy = Math.floorDiv(checkY, 16);
+        int ly = checkY - cy * 16;
+
+        int centerGx = gx + 8;
+        int centerGz = gz + 8;
+        int cx = Math.floorDiv(centerGx, 16);
+        int cz = Math.floorDiv(centerGz, 16);
+        int lx = centerGx - cx * 16;
+        int lz = centerGz - cz * 16;
+
+        BlockPos supportCell = new BlockPos(cx, cy, cz);
+        BlockState cellState = world.getBlockState(supportCell);
+        if (cellState.isAir()) return Blocks.AIR.getDefaultState();
+
+        if (cellState.isOf(SubGridMod.SUBGRID_CONTAINER)) {
+            BlockEntity be = world.getBlockEntity(supportCell);
+            if (be instanceof SubGridBlockEntity sgbe) {
+                for (SubGridBlockEntity.CellSlice s : sgbe.getSlices()) {
+                    if (ignorePartId != null && s.partId.equals(ignorePartId)) continue;
+                    if (lx >= s.minX && lx <= s.maxX && lz >= s.minZ && lz <= s.maxZ && ly >= s.minY && ly < s.maxY) {
+                        return s.storedState;
+                    }
+                }
+            }
+            return Blocks.AIR.getDefaultState();
+        }
+
+        if (ly == 15) {
+            return cellState;
+        }
+        if (cellState.getBlock() instanceof SlabBlock && cellState.get(SlabBlock.TYPE) == SlabType.BOTTOM && ly == 7) {
+            return cellState;
+        }
+        return Blocks.AIR.getDefaultState();
+    }
+
+    /**
+     * Devuelve el `BlockState` que toca físicamente la cara horizontal `(dx, dz)` del bloque en `(gx, gy, gz)`
+     * (usado por escaleras de mano `LadderBlock`, antorchas de pared, botones y palancas en `canPlaceAt`).
+     */
+    public static BlockState getFlushHorizontalNeighborState16(World world, int gx, int gy, int gz,
+                                                               int dx, int dz, @Nullable UUID ignorePartId) {
+        int sampleGx = (dx > 0) ? (gx + 16) : (dx < 0 ? (gx - 1) : (gx + 8));
+        int sampleGy = gy + 8;
+        int sampleGz = (dz > 0) ? (gz + 16) : (dz < 0 ? (gz - 1) : (gz + 8));
+
+        int cx = Math.floorDiv(sampleGx, 16);
+        int cy = Math.floorDiv(sampleGy, 16);
+        int cz = Math.floorDiv(sampleGz, 16);
+        int lx = sampleGx - cx * 16;
+        int ly = sampleGy - cy * 16;
+        int lz = sampleGz - cz * 16;
+
+        BlockPos cellPos = new BlockPos(cx, cy, cz);
+        BlockState cellState = world.getBlockState(cellPos);
+        if (cellState.isAir()) return Blocks.AIR.getDefaultState();
+
+        if (cellState.isOf(SubGridMod.SUBGRID_CONTAINER)) {
+            BlockEntity be = world.getBlockEntity(cellPos);
+            if (be instanceof SubGridBlockEntity sgbe) {
+                for (SubGridBlockEntity.CellSlice s : sgbe.getSlices()) {
+                    if (ignorePartId != null && s.partId.equals(ignorePartId)) continue;
+                    if (lx >= s.minX && lx < s.maxX && ly >= s.minY && ly < s.maxY && lz >= s.minZ && lz < s.maxZ) {
+                        return s.storedState;
+                    }
+                }
+            }
+            return Blocks.AIR.getDefaultState();
+        }
+
+        if ((dx > 0 && lx == 0) || (dx < 0 && lx == 15) || (dz > 0 && lz == 0) || (dz < 0 && lz == 15)) {
+            return cellState;
+        }
+        return Blocks.AIR.getDefaultState();
+    }
+
+    /**
+     * Para `CactusBlock.canPlaceAt`: detecta si hay cualquier bloque o pieza a los costados del cactus
+     * (incluso si está a distancia de Sub-Grid de 1 a 16 dieciseisavos).
+     */
+    public static BlockState getTouchingHorizontalStateAt16(World world, int gx, int gy, int gz,
+                                                            int dx, int dz, @Nullable UUID ignorePartId) {
+        for (int dist = 1; dist <= 16; dist += 3) {
+            int sampleGx = (dx > 0) ? (gx + 15 + dist) : (dx < 0 ? (gx - dist) : (gx + 8));
+            int sampleGy = gy + 8;
+            int sampleGz = (dz > 0) ? (gz + 15 + dist) : (dz < 0 ? (gz - dist) : (gz + 8));
+            int cx = Math.floorDiv(sampleGx, 16);
+            int cy = Math.floorDiv(sampleGy, 16);
+            int cz = Math.floorDiv(sampleGz, 16);
+            int lx = sampleGx - cx * 16;
+            int ly = sampleGy - cy * 16;
+            int lz = sampleGz - cz * 16;
+
+            BlockPos cellPos = new BlockPos(cx, cy, cz);
+            BlockState cellState = world.getBlockState(cellPos);
+            if (cellState.isOf(SubGridMod.SUBGRID_CONTAINER)) {
+                BlockEntity be = world.getBlockEntity(cellPos);
+                if (be instanceof SubGridBlockEntity sgbe) {
+                    for (SubGridBlockEntity.CellSlice s : sgbe.getSlices()) {
+                        if (ignorePartId != null && s.partId.equals(ignorePartId)) continue;
+                        if (lx >= s.minX && lx < s.maxX && ly >= s.minY && ly < s.maxY && lz >= s.minZ && lz < s.maxZ) {
+                            return s.storedState;
+                        }
+                    }
+                }
+            } else if (!cellState.isAir()) {
+                return cellState;
+            }
+        }
+        return Blocks.AIR.getDefaultState();
+    }
+
+    @Nullable
+    public static SubGridBlockEntity.CellSlice findPrimarySlice(World world, BlockPos anchor, UUID partId) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    BlockEntity be = world.getBlockEntity(anchor.add(dx, dy, dz));
+                    if (be instanceof SubGridBlockEntity sgbe) {
+                        for (SubGridBlockEntity.CellSlice s : sgbe.getSlices()) {
+                            if (s.partId.equals(partId) && s.renderHere) {
+                                return s;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    public static void rebuildPartWithNewState(World world, BlockPos anchor, UUID partId, BlockState newState, boolean latch) {
+        SubGridBlockEntity.CellSlice primary = findPrimarySlice(world, anchor, partId);
+        if (primary == null) return;
+        int gx = primary.primaryPos.getX() * 16 + primary.offsetX;
+        int gy = primary.primaryPos.getY() * 16 + primary.offsetY;
+        int gz = primary.primaryPos.getZ() * 16 + primary.offsetZ;
+        int step = primary.gridStepPlaced;
+        float yaw = primary.yawDegrees;
+        NbtCompound beNbt = (primary.innerBlockEntity != null) ? primary.innerBlockEntity.createNbt() : primary.savedInnerBeNbt;
+
+        removePartEverywhere(world, anchor, partId);
+        placeAtGlobal16WithNbt(world, gx, gy, gz, newState, partId, step, latch, yaw, beNbt);
+    }
+
+    public static void toggleOpenAndRebuildGeometry(World world, BlockPos anchor, UUID partId, boolean open) {
+        List<SubGridBlockEntity.CellSlice> primaryParts = new ArrayList<>();
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dy = -2; dy <= 2; dy++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    BlockEntity be = world.getBlockEntity(anchor.add(dx, dy, dz));
+                    if (be instanceof SubGridBlockEntity sgbe) {
+                        for (SubGridBlockEntity.CellSlice s : sgbe.getSlices()) {
+                            if (s.partId.equals(partId) && s.renderHere && s.storedState.contains(Properties.OPEN)) {
+                                primaryParts.add(s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (primaryParts.isEmpty()) return;
+
+        removePartEverywhere(world, anchor, partId);
+        for (SubGridBlockEntity.CellSlice s : primaryParts) {
+            int gx = s.primaryPos.getX() * 16 + s.offsetX;
+            int gy = s.primaryPos.getY() * 16 + s.offsetY;
+            int gz = s.primaryPos.getZ() * 16 + s.offsetZ;
+            BlockState updated = s.storedState.with(Properties.OPEN, open);
+            placeAtGlobal16(world, gx, gy, gz, updated, partId, s.gridStepPlaced, s.toggleLatchPower, s.yawDegrees);
+        }
     }
 
     private static ActionResult handleFireIgnitionOnSubGrid(PlayerEntity player, World world, Hand hand,
@@ -249,7 +524,7 @@ public class SubGridPlacementHandler {
         int step = Math.min(8, Math.max(1, target.gridStepPlaced));
         int[] fireOrigin16 = computeFireOriginOnSlice(target, hitResult.getSide());
 
-        if (!canPlaceAtGlobal16(world, fireOrigin16[0], fireOrigin16[1], fireOrigin16[2], fireState, null, false)) {
+        if (!canPlaceAtGlobal16(world, fireOrigin16[0], fireOrigin16[1], fireOrigin16[2], fireState, 0.0f, null, false)) {
             return ActionResult.PASS;
         }
 
@@ -287,16 +562,23 @@ public class SubGridPlacementHandler {
         }
     }
 
-    private static boolean isInteractiveBlock(Block b) {
-        return b instanceof CraftingTableBlock || b instanceof StonecutterBlock || b instanceof LoomBlock
+    public static boolean isInteractiveBlock(Block b) {
+        return b instanceof BlockEntityProvider
+                || b instanceof CraftingTableBlock || b instanceof EnchantingTableBlock
+                || b instanceof StonecutterBlock || b instanceof LoomBlock
                 || b instanceof CartographyTableBlock || b instanceof SmithingTableBlock
                 || b instanceof AnvilBlock || b instanceof GrindstoneBlock
+                || b instanceof ChestBlock || b instanceof BarrelBlock || b instanceof ShulkerBoxBlock
+                || b instanceof EnderChestBlock || b instanceof DispenserBlock
+                || b instanceof HopperBlock || b instanceof AbstractFurnaceBlock || b instanceof BrewingStandBlock
                 || b instanceof LeverBlock || b instanceof ButtonBlock
                 || b instanceof DoorBlock || b instanceof TrapdoorBlock || b instanceof FenceGateBlock
                 || b instanceof RepeaterBlock || b instanceof ComparatorBlock || b instanceof DaylightDetectorBlock
-                || b instanceof NoteBlock || b instanceof BellBlock || b instanceof RedstoneLampBlock;
+                || b instanceof NoteBlock || b instanceof BellBlock || b instanceof RedstoneLampBlock
+                || b instanceof CakeBlock || b instanceof ComposterBlock || b instanceof BedBlock;
     }
 
+    @Nullable
     public static BlockState getDesiredBlockState(PlayerEntity player, World world, Hand hand,
                                                   ItemStack stack, BlockItem blockItem, BlockHitResult hit, int effectiveStep) {
         Block b = blockItem.getBlock();
@@ -313,6 +595,20 @@ public class SubGridPlacementHandler {
                     .with(StairsBlock.HALF, upsideDown ? BlockHalf.TOP : BlockHalf.BOTTOM)
                     .with(StairsBlock.WATERLOGGED, false);
         }
+        if (b instanceof LadderBlock) {
+            if (!hit.getSide().getAxis().isHorizontal()) {
+                return null;
+            }
+            return b.getDefaultState().with(LadderBlock.FACING, hit.getSide()).with(LadderBlock.WATERLOGGED, false);
+        }
+        if (b instanceof DoorBlock) {
+            Direction horiz = (effectiveStep == 1) ? Direction.NORTH : player.getHorizontalFacing();
+            return b.getDefaultState()
+                    .with(DoorBlock.FACING, horiz)
+                    .with(DoorBlock.HALF, DoubleBlockHalf.LOWER)
+                    .with(DoorBlock.OPEN, false);
+        }
+
         BlockState st = null;
         try {
             ItemPlacementContext ctx = new ItemPlacementContext(player, hand, stack, hit);
@@ -321,9 +617,11 @@ public class SubGridPlacementHandler {
         }
         if (st == null) {
             st = b.getDefaultState();
+            if (st.contains(Properties.HORIZONTAL_FACING)) {
+                st = st.with(Properties.HORIZONTAL_FACING, player.getHorizontalFacing().getOpposite());
+            }
         }
-        // En Modo Off-Grid (effectiveStep == 1), normalizar HORIZONTAL_FACING a NORTH para que la rotación continua Y (yawDegrees) no se duplique
-        if (effectiveStep == 1 && st.contains(Properties.HORIZONTAL_FACING)) {
+        if (effectiveStep == 1 && st.contains(Properties.HORIZONTAL_FACING) && !(b instanceof LadderBlock)) {
             st = st.with(Properties.HORIZONTAL_FACING, Direction.NORTH);
         }
         return st;
@@ -358,9 +656,11 @@ public class SubGridPlacementHandler {
         }
     }
 
-    public static int[] computeGlobalOrigin16(BlockHitResult hit, BlockState stateToPlace, int gridStep, @Nullable BlockView world) {
+    public static int[] computeGlobalOrigin16(BlockHitResult hit, BlockState stateToPlace, int gridStep,
+                                              @Nullable World world, @Nullable PlayerEntity player) {
         Vec3d p = hit.getPos();
         Direction face = hit.getSide();
+        BlockPos hitPos = hit.getBlockPos();
 
         double px = p.x * 16.0;
         double py = p.y * 16.0;
@@ -371,9 +671,54 @@ public class SubGridPlacementHandler {
         int sizeY = dims[1];
         int sizeZ = dims[2];
 
+        if (world != null && world.getBlockState(hitPos).isOf(SubGridMod.SUBGRID_CONTAINER) && player != null) {
+            BlockEntity be = world.getBlockEntity(hitPos);
+            if (be instanceof SubGridBlockEntity sgbe) {
+                Vec3d eye = player.getEyePos();
+                SubGridBlockEntity.CellSlice target = sgbe.raycastSlice(eye, eye.add(player.getRotationVec(1.0F).multiply(6.5)));
+                if (target != null) {
+                    int baseGx = target.primaryPos.getX() * 16 + target.offsetX;
+                    int baseGy = target.primaryPos.getY() * 16 + target.offsetY;
+                    int baseGz = target.primaryPos.getZ() * 16 + target.offsetZ;
+                    int[] targetDims = getBoundingDimensions16(target.storedState, world);
+
+                    int gx = snapCoord(px - sizeX * 0.5, gridStep);
+                    int gy = snapCoord(py - sizeY * 0.5, gridStep);
+                    int gz = snapCoord(pz - sizeZ * 0.5, gridStep);
+
+                    switch (face) {
+                        case UP -> gy = baseGy + targetDims[1];
+                        case DOWN -> gy = baseGy - sizeY;
+                        case EAST -> gx = baseGx + 16;
+                        case WEST -> gx = baseGx - sizeX;
+                        case SOUTH -> gz = baseGz + 16;
+                        case NORTH -> gz = baseGz - sizeZ;
+                    }
+                    return new int[]{gx, gy, gz};
+                }
+            }
+        }
+
         int gx = snapCoord(px - sizeX * 0.5, gridStep);
         int gy = snapCoord(py - sizeY * 0.5, gridStep);
         int gz = snapCoord(pz - sizeZ * 0.5, gridStep);
+
+        if (world != null && !world.getBlockState(hitPos).isAir() && !world.getBlockState(hitPos).isOf(SubGridMod.SUBGRID_CONTAINER)) {
+            BlockState clickedVanilla = world.getBlockState(hitPos);
+            int[] clickedDims = getBoundingDimensions16(clickedVanilla, world);
+            int cellGx = hitPos.getX() * 16;
+            int cellGy = hitPos.getY() * 16;
+            int cellGz = hitPos.getZ() * 16;
+            switch (face) {
+                case UP -> gy = cellGy + clickedDims[1];
+                case DOWN -> gy = cellGy - sizeY;
+                case EAST -> gx = cellGx + 16;
+                case WEST -> gx = cellGx - sizeX;
+                case SOUTH -> gz = cellGz + 16;
+                case NORTH -> gz = cellGz - sizeZ;
+            }
+            return new int[]{gx, gy, gz};
+        }
 
         switch (face) {
             case UP -> gy = (int) Math.round(py);
@@ -397,15 +742,11 @@ public class SubGridPlacementHandler {
         if (b instanceof SlabBlock) {
             return new int[]{16, 8, 16};
         }
-        VoxelShape outline = getSafeOriginalOutlineShape(state, world, BlockPos.ORIGIN);
-        if (!outline.isEmpty()) {
-            Box box = outline.getBoundingBox();
-            int sx = Math.max(2, Math.min(16, (int) Math.round((box.maxX - box.minX) * 16.0)));
-            int sy = Math.max(2, Math.min(16, (int) Math.round((box.maxY - box.minY) * 16.0)));
-            int sz = Math.max(2, Math.min(16, (int) Math.round((box.maxZ - box.minZ) * 16.0)));
-            if (sx >= 12 && sz >= 12) {
-                return new int[]{16, sy, 16};
-            }
+        if (b instanceof CarpetBlock || b instanceof AbstractRailBlock || b instanceof RedstoneWireBlock || b instanceof AbstractPressurePlateBlock) {
+            return new int[]{16, 2, 16};
+        }
+        if (b instanceof TrapdoorBlock && state.contains(TrapdoorBlock.OPEN) && !state.get(TrapdoorBlock.OPEN)) {
+            return new int[]{16, 3, 16};
         }
         return new int[]{16, 16, 16};
     }
@@ -436,8 +777,47 @@ public class SubGridPlacementHandler {
         return boxes;
     }
 
+    public static boolean obbOverlapXZ(double cxA, double czA, double hwA, double hzA, float yawDegA,
+                                       double cxB, double czB, double hwB, double hzB, float yawDegB) {
+        double eps = 0.025;
+        double effHwA = Math.max(0.01, hwA - eps);
+        double effHzA = Math.max(0.01, hzA - eps);
+        double effHwB = Math.max(0.01, hwB - eps);
+        double effHzB = Math.max(0.01, hzB - eps);
+
+        double radA = Math.toRadians(yawDegA);
+        double radB = Math.toRadians(yawDegB);
+
+        double[][] axes = {
+                {Math.cos(radA), -Math.sin(radA)},
+                {Math.sin(radA), Math.cos(radA)},
+                {Math.cos(radB), -Math.sin(radB)},
+                {Math.sin(radB), Math.cos(radB)}
+        };
+
+        double dx = cxB - cxA;
+        double dz = czB - czA;
+
+        for (double[] axis : axes) {
+            double ax = axis[0];
+            double az = axis[1];
+            double dist = Math.abs(dx * ax + dz * az);
+
+            double rA = effHwA * Math.abs(axes[0][0] * ax + axes[0][1] * az)
+                    + effHzA * Math.abs(axes[1][0] * ax + axes[1][1] * az);
+            double rB = effHwB * Math.abs(axes[2][0] * ax + axes[2][1] * az)
+                    + effHzB * Math.abs(axes[3][0] * ax + axes[3][1] * az);
+
+            if (dist >= rA + rB) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static boolean canPlaceAtGlobal16(World world, int gx, int gy, int gz,
-                                             BlockState stateToPlace, @Nullable UUID ignorePartId, boolean checkEntities) {
+                                             BlockState stateToPlace, float yawDegrees,
+                                             @Nullable UUID ignorePartId, boolean checkEntities) {
         if (checkEntities) {
             VoxelShape origCollision = getSafeOriginalCollisionShape(stateToPlace, world, BlockPos.ORIGIN);
             if (!origCollision.isEmpty()) {
@@ -451,31 +831,39 @@ public class SubGridPlacementHandler {
         }
 
         List<int[]> localBoxes = getLocalBoxes16(stateToPlace, world);
+        double pivotX = gx + 8.0;
+        double pivotZ = gz + 8.0;
+        double rad = Math.toRadians(yawDegrees);
+        double cos = Math.cos(rad);
+        double sin = Math.sin(rad);
 
         for (int[] lb : localBoxes) {
-            int gMinX = gx + lb[0], gMinY = gy + lb[1], gMinZ = gz + lb[2];
-            int gMaxX = gx + lb[3], gMaxY = gy + lb[4], gMaxZ = gz + lb[5];
+            double minYA = gy + lb[1];
+            double maxY2A = gy + lb[4];
 
-            int cMinX = Math.floorDiv(gMinX, 16);
-            int cMaxX = Math.floorDiv(gMaxX - 1, 16);
-            int cMinY = Math.floorDiv(gMinY, 16);
-            int cMaxY = Math.floorDiv(gMaxY - 1, 16);
-            int cMinZ = Math.floorDiv(gMinZ, 16);
-            int cMaxZ = Math.floorDiv(gMaxZ - 1, 16);
+            double lcx = (lb[0] + lb[3]) * 0.5;
+            double lcz = (lb[2] + lb[5]) * 0.5;
+            double hwA = (lb[3] - lb[0]) * 0.5;
+            double hzA = (lb[5] - lb[2]) * 0.5;
+
+            double rdx = lcx - 8.0;
+            double rdz = lcz - 8.0;
+            double cxA = pivotX + rdx * cos + rdz * sin;
+            double czA = pivotZ - rdx * sin + rdz * cos;
+
+            double extX = hwA * Math.abs(cos) + hzA * Math.abs(sin);
+            double extZ = hwA * Math.abs(sin) + hzA * Math.abs(cos);
+            int cMinX = Math.floorDiv((int) Math.floor(cxA - extX), 16);
+            int cMaxX = Math.floorDiv((int) Math.ceil(cxA + extX) - 1, 16);
+            int cMinY = Math.floorDiv((int) minYA, 16);
+            int cMaxY = Math.floorDiv((int) maxY2A - 1, 16);
+            int cMinZ = Math.floorDiv((int) Math.floor(czA - extZ), 16);
+            int cMaxZ = Math.floorDiv((int) Math.ceil(czA + extZ) - 1, 16);
 
             for (int cx = cMinX; cx <= cMaxX; cx++) {
                 for (int cy = cMinY; cy <= cMaxY; cy++) {
                     for (int cz = cMinZ; cz <= cMaxZ; cz++) {
                         BlockPos cellPos = new BlockPos(cx, cy, cz);
-                        int lx0 = Math.max(0, gMinX - cx * 16);
-                        int ly0 = Math.max(0, gMinY - cy * 16);
-                        int lz0 = Math.max(0, gMinZ - cz * 16);
-                        int lx1 = Math.min(16, gMaxX - cx * 16);
-                        int ly1 = Math.min(16, gMaxY - cy * 16);
-                        int lz1 = Math.min(16, gMaxZ - cz * 16);
-
-                        if (lx1 <= lx0 || ly1 <= ly0 || lz1 <= lz0) continue;
-
                         BlockState existing = world.getBlockState(cellPos);
                         if (existing.isAir() || existing.isReplaceable()) {
                             continue;
@@ -484,18 +872,37 @@ public class SubGridPlacementHandler {
                         if (existing.isOf(SubGridMod.SUBGRID_CONTAINER)) {
                             BlockEntity be = world.getBlockEntity(cellPos);
                             if (be instanceof SubGridBlockEntity sgbe) {
-                                if (sgbe.hasOverlap(world, lx0, ly0, lz0, lx1, ly1, lz1, ignorePartId)) {
-                                    return false;
-                                }
-                            }
-                            continue;
-                        }
+                                for (SubGridBlockEntity.CellSlice s : sgbe.getSlices()) {
+                                    if (ignorePartId != null && s.partId.equals(ignorePartId)) continue;
+                                    int sBaseGx = s.primaryPos.getX() * 16 + s.offsetX;
+                                    int sBaseGy = s.primaryPos.getY() * 16 + s.offsetY;
+                                    int sBaseGz = s.primaryPos.getZ() * 16 + s.offsetZ;
 
-                        if (existing.getBlock() instanceof SlabBlock || existing.getBlock() instanceof StairsBlock) {
-                            List<int[]> vanillaBoxes = getVanillaSlabOrStairBoxes16(existing, world);
-                            for (int[] vb : vanillaBoxes) {
-                                if (lx0 < vb[3] && lx1 > vb[0] && ly0 < vb[4] && ly1 > vb[1] && lz0 < vb[5] && lz1 > vb[2]) {
-                                    return false;
+                                    List<int[]> sBoxes = getLocalBoxes16(s.storedState, world);
+                                    double sPivotX = sBaseGx + 8.0;
+                                    double sPivotZ = sBaseGz + 8.0;
+                                    double sRad = Math.toRadians(s.yawDegrees);
+                                    double sCos = Math.cos(sRad);
+                                    double sSin = Math.sin(sRad);
+
+                                    for (int[] sb : sBoxes) {
+                                        double minYB = sBaseGy + sb[1];
+                                        double maxYB = sBaseGy + sb[4];
+                                        if (maxY2A <= minYB + 0.02 || minYA >= maxYB - 0.02) continue;
+
+                                        double slcx = (sb[0] + sb[3]) * 0.5;
+                                        double slcz = (sb[2] + sb[5]) * 0.5;
+                                        double hwB = (sb[3] - sb[0]) * 0.5;
+                                        double hzB = (sb[5] - sb[2]) * 0.5;
+                                        double srdx = slcx - 8.0;
+                                        double srdz = slcz - 8.0;
+                                        double cxB = sPivotX + srdx * sCos + srdz * sSin;
+                                        double czB = sPivotZ - srdx * sSin + srdz * sCos;
+
+                                        if (obbOverlapXZ(cxA, czA, hwA, hzA, yawDegrees, cxB, czB, hwB, hzB, s.yawDegrees)) {
+                                            return false;
+                                        }
+                                    }
                                 }
                             }
                             continue;
@@ -503,13 +910,16 @@ public class SubGridPlacementHandler {
 
                         VoxelShape existingShape = getSafeOriginalOutlineShape(existing, world, cellPos);
                         for (Box eb : existingShape.getBoundingBoxes()) {
-                            int ex0 = (int) Math.floor(eb.minX * 16.0 + 1e-4);
-                            int ey0 = (int) Math.floor(eb.minY * 16.0 + 1e-4);
-                            int ez0 = (int) Math.floor(eb.minZ * 16.0 + 1e-4);
-                            int ex1 = (int) Math.ceil(eb.maxX * 16.0 - 1e-4);
-                            int ey1 = (int) Math.ceil(eb.maxY * 16.0 - 1e-4);
-                            int ez1 = (int) Math.ceil(eb.maxZ * 16.0 - 1e-4);
-                            if (lx0 < ex1 && lx1 > ex0 && ly0 < ey1 && ly1 > ey0 && lz0 < ez1 && lz1 > ez0) {
+                            double minYB = cy * 16.0 + eb.minY * 16.0;
+                            double maxYB = cy * 16.0 + eb.maxY * 16.0;
+                            if (maxY2A <= minYB + 0.02 || minYA >= maxYB - 0.02) continue;
+
+                            double cxB = cx * 16.0 + (eb.minX + eb.maxX) * 8.0;
+                            double czB = cz * 16.0 + (eb.minZ + eb.maxZ) * 8.0;
+                            double hwB = (eb.maxX - eb.minX) * 8.0;
+                            double hzB = (eb.maxZ - eb.minZ) * 8.0;
+
+                            if (obbOverlapXZ(cxA, czA, hwA, hzA, yawDegrees, cxB, czB, hwB, hzB, 0.0f)) {
                                 return false;
                             }
                         }
@@ -518,22 +928,6 @@ public class SubGridPlacementHandler {
             }
         }
         return true;
-    }
-
-    private static List<int[]> getVanillaSlabOrStairBoxes16(BlockState existing, BlockView world) {
-        if (existing.getBlock() instanceof SlabBlock) {
-            List<int[]> list = new ArrayList<>();
-            SlabType type = existing.get(SlabBlock.TYPE);
-            if (type == SlabType.BOTTOM) {
-                list.add(new int[]{0, 0, 0, 16, 8, 16});
-            } else if (type == SlabType.TOP) {
-                list.add(new int[]{0, 8, 0, 16, 16, 16});
-            } else {
-                list.add(new int[]{0, 0, 0, 16, 16, 16});
-            }
-            return list;
-        }
-        return getLocalBoxes16(existing, world);
     }
 
     public static BlockState updateConnectionsForState(World world, int gx, int gy, int gz,
@@ -578,7 +972,7 @@ public class SubGridPlacementHandler {
                     int sGx = s.primaryPos.getX() * 16 + s.offsetX;
                     int sGy = s.primaryPos.getY() * 16 + s.offsetY;
                     int sGz = s.primaryPos.getZ() * 16 + s.offsetZ;
-                    if (Math.abs(sGx - targetGx) <= 2 && Math.abs(sGy - targetGy) <= 4 && Math.abs(sGz - targetGz) <= 2) {
+                    if (Math.abs(sGx - targetGx) <= 4 && Math.abs(sGy - targetGy) <= 4 && Math.abs(sGz - targetGz) <= 4) {
                         if (isConnectableTarget(selfBlock, s.storedState, world, cellPos, sideTowardsSelf)) {
                             return true;
                         }
@@ -629,6 +1023,12 @@ public class SubGridPlacementHandler {
 
     public static void placeAtGlobal16(World world, int gx, int gy, int gz,
                                        BlockState stateToPlace, UUID partId, int gridStep, boolean latch, float yawDegrees) {
+        placeAtGlobal16WithNbt(world, gx, gy, gz, stateToPlace, partId, gridStep, latch, yawDegrees, null);
+    }
+
+    public static void placeAtGlobal16WithNbt(World world, int gx, int gy, int gz,
+                                              BlockState stateToPlace, UUID partId, int gridStep,
+                                              boolean latch, float yawDegrees, @Nullable net.minecraft.nbt.NbtCompound savedBeNbt) {
         BlockPos primaryPos = new BlockPos(Math.floorDiv(gx, 16), Math.floorDiv(gy, 16), Math.floorDiv(gz, 16));
         int primaryOffX = gx - primaryPos.getX() * 16;
         int primaryOffY = gy - primaryPos.getY() * 16;
@@ -637,9 +1037,24 @@ public class SubGridPlacementHandler {
         List<int[]> localBoxes = getLocalBoxes16(stateToPlace, world);
         boolean renderedAssigned = false;
 
+        double rad = Math.toRadians(yawDegrees);
+        double absCos = Math.abs(Math.cos(rad));
+        double absSin = Math.abs(Math.sin(rad));
+
         for (int[] lb : localBoxes) {
-            int gMinX = gx + lb[0], gMinY = gy + lb[1], gMinZ = gz + lb[2];
-            int gMaxX = gx + lb[3], gMaxY = gy + lb[4], gMaxZ = gz + lb[5];
+            double hw = (lb[3] - lb[0]) * 0.5;
+            double hz = (lb[5] - lb[2]) * 0.5;
+            double lcx = gx + (lb[0] + lb[3]) * 0.5;
+            double lcz = gz + (lb[2] + lb[5]) * 0.5;
+            double extX = hw * absCos + hz * absSin;
+            double extZ = hw * absSin + hz * absCos;
+
+            int gMinX = (int) Math.floor(lcx - extX);
+            int gMaxX = (int) Math.ceil(lcx + extX);
+            int gMinY = gy + lb[1];
+            int gMaxY = gy + lb[4];
+            int gMinZ = (int) Math.floor(lcz - extZ);
+            int gMaxZ = (int) Math.ceil(lcz + extZ);
 
             int cMinX = Math.floorDiv(gMinX, 16);
             int cMaxX = Math.floorDiv(gMaxX - 1, 16);
@@ -676,6 +1091,10 @@ public class SubGridPlacementHandler {
                                 primaryOffX, primaryOffY, primaryOffZ,
                                 primaryPos, gridStep, latch, yawDegrees
                         );
+                        if (isRenderSlice) {
+                            slice.savedInnerBeNbt = savedBeNbt;
+                            slice.getOrCreateInnerBlockEntity(world);
+                        }
                         sgbe.addSlice(slice);
                     }
                 }
@@ -745,15 +1164,19 @@ public class SubGridPlacementHandler {
         BlockSoundGroup soundGroup = removedState.getSoundGroup();
         world.playSound(null, pos, soundGroup.getBreakSound(), SoundCategory.BLOCKS, 1.0f, soundGroup.getPitch());
         if (!player.isCreative()) {
-            Block.dropStacks(removedState, world, pos);
+            if (removedState.contains(Properties.DOUBLE_BLOCK_HALF)) {
+                Block.dropStacks(removedState.with(Properties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.LOWER), world, pos);
+            } else {
+                Block.dropStacks(removedState, world, pos);
+            }
         }
         return false;
     }
 
     public static void removePartEverywhere(World world, BlockPos anchor, UUID partId) {
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dy = -2; dy <= 2; dy++) {
-                for (int dz = -2; dz <= 2; dz++) {
+        for (int dx = -2; dx <= 3; dx++) {
+            for (int dy = -2; dy <= 3; dy++) {
+                for (int dz = -2; dz <= 3; dz++) {
                     BlockPos p = anchor.add(dx, dy, dz);
                     BlockEntity be = world.getBlockEntity(p);
                     if (be instanceof SubGridBlockEntity cellBe) {
@@ -771,9 +1194,9 @@ public class SubGridPlacementHandler {
     }
 
     public static void removePartEverywhereOnBreak(World world, BlockPos anchor, UUID partId, BlockPos brokenPos) {
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dy = -2; dy <= 2; dy++) {
-                for (int dz = -2; dz <= 2; dz++) {
+        for (int dx = -2; dx <= 3; dx++) {
+            for (int dy = -2; dy <= 3; dy++) {
+                for (int dz = -2; dz <= 3; dz++) {
                     BlockPos p = anchor.add(dx, dy, dz);
                     if (p.equals(brokenPos)) continue;
                     BlockEntity be = world.getBlockEntity(p);
@@ -792,22 +1215,7 @@ public class SubGridPlacementHandler {
     }
 
     public static boolean shiftPartBy16(World world, BlockPos anchor, UUID partId, int stepX16, int stepY16, int stepZ16) {
-        SubGridBlockEntity.CellSlice primarySlice = null;
-        for (int dx = -1; dx <= 1 && primarySlice == null; dx++) {
-            for (int dy = -1; dy <= 1 && primarySlice == null; dy++) {
-                for (int dz = -1; dz <= 1 && primarySlice == null; dz++) {
-                    BlockEntity be = world.getBlockEntity(anchor.add(dx, dy, dz));
-                    if (be instanceof SubGridBlockEntity sgbe) {
-                        for (SubGridBlockEntity.CellSlice s : sgbe.getSlices()) {
-                            if (s.partId.equals(partId) && s.renderHere) {
-                                primarySlice = s;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        SubGridBlockEntity.CellSlice primarySlice = findPrimarySlice(world, anchor, partId);
         if (primarySlice == null) return false;
 
         int newGx = primarySlice.primaryPos.getX() * 16 + primarySlice.offsetX + stepX16;
@@ -818,14 +1226,17 @@ public class SubGridPlacementHandler {
         int gridStep = primarySlice.gridStepPlaced;
         boolean latch = primarySlice.toggleLatchPower;
         float yaw = primarySlice.yawDegrees;
+        net.minecraft.nbt.NbtCompound savedNbt = (primarySlice.innerBlockEntity != null)
+                ? primarySlice.innerBlockEntity.createNbt()
+                : primarySlice.savedInnerBeNbt;
 
-        if (!canPlaceAtGlobal16(world, newGx, newGy, newGz, state, partId, false)) {
+        if (!canPlaceAtGlobal16(world, newGx, newGy, newGz, state, yaw, partId, false)) {
             return false;
         }
 
         removePartEverywhere(world, primarySlice.primaryPos, partId);
         BlockState updatedState = updateConnectionsForState(world, newGx, newGy, newGz, state, partId);
-        placeAtGlobal16(world, newGx, newGy, newGz, updatedState, partId, gridStep, latch, yaw);
+        placeAtGlobal16WithNbt(world, newGx, newGy, newGz, updatedState, partId, gridStep, latch, yaw, savedNbt);
         return true;
     }
 
@@ -833,7 +1244,7 @@ public class SubGridPlacementHandler {
         for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
             ServerWorld world = player.getServerWorld();
             BlockPos center = player.getBlockPos();
-            Set<UUID> processedFallingParts = new HashSet<>();
+            Set<UUID> processedParts = new HashSet<>();
 
             for (int dx = -7; dx <= 7; dx++) {
                 for (int dy = -5; dy <= 5; dy++) {
@@ -844,7 +1255,7 @@ public class SubGridPlacementHandler {
                         if (st.isOf(SubGridMod.SUBGRID_CONTAINER)) {
                             BlockEntity be = world.getBlockEntity(bp);
                             if (be instanceof SubGridBlockEntity sgbe) {
-                                tickGravityAndOrphansInCell(world, bp, sgbe, processedFallingParts);
+                                tickSurvivalGravityAndBlockEntitiesInCell(world, bp, sgbe, processedParts);
                             }
                         }
 
@@ -873,8 +1284,8 @@ public class SubGridPlacementHandler {
         }
     }
 
-    private static void tickGravityAndOrphansInCell(ServerWorld world, BlockPos cellPos,
-                                                    SubGridBlockEntity sgbe, Set<UUID> processedFallingParts) {
+    private static void tickSurvivalGravityAndBlockEntitiesInCell(ServerWorld world, BlockPos cellPos,
+                                                                  SubGridBlockEntity sgbe, Set<UUID> processedParts) {
         List<SubGridBlockEntity.CellSlice> copy = new ArrayList<>(sgbe.getSlices());
         for (SubGridBlockEntity.CellSlice s : copy) {
             if (!s.renderHere) {
@@ -897,15 +1308,34 @@ public class SubGridPlacementHandler {
                 continue;
             }
 
-            if (s.storedState.getBlock() instanceof FallingBlock && !processedFallingParts.contains(s.partId)) {
-                processedFallingParts.add(s.partId);
-                int gx = s.primaryPos.getX() * 16 + s.offsetX;
-                int gy = s.primaryPos.getY() * 16 + s.offsetY;
-                int gz = s.primaryPos.getZ() * 16 + s.offsetZ;
+            if (processedParts.contains(s.partId)) continue;
+            processedParts.add(s.partId);
 
+            // 1. Tick del BlockEntity nativo en servidor (Hornos cocinando, Soportes de pociones, Tolvas, Fogatas, etc.)
+            s.tickInnerBlockEntity(world);
+
+            int gx = s.primaryPos.getX() * 16 + s.offsetX;
+            int gy = s.primaryPos.getY() * 16 + s.offsetY;
+            int gz = s.primaryPos.getZ() * 16 + s.offsetZ;
+
+            // 2. Supervivencia Vanilla Nativa (`s.storedState.canPlaceAt(world, basePos)` dentro de `SubGridWorldContext`):
+            // Si perdió el bloque que lo sostenía (ej. riel o escalera en el aire, cactus con bloque al lado), se rompe y suelta su ítem!
+            if (!canBlockSurviveNative(world, gx, gy, gz, s.storedState, s.partId)) {
+                BlockState brokenState = s.storedState;
+                removePartEverywhere(world, s.primaryPos, s.partId);
+                BlockSoundGroup sg = brokenState.getSoundGroup();
+                world.playSound(null, cellPos, sg.getBreakSound(), SoundCategory.BLOCKS, 1.0f, sg.getPitch());
+                if (!(brokenState.contains(Properties.DOUBLE_BLOCK_HALF) && brokenState.get(Properties.DOUBLE_BLOCK_HALF) == DoubleBlockHalf.UPPER)) {
+                    Block.dropStacks(brokenState, world, cellPos);
+                }
+                continue;
+            }
+
+            // 3. Gravedad real para bloques FallingBlock (Arena, Grava, Polvo de Hormigón, Yunques, Huevo de Dragón)
+            if (s.storedState.getBlock() instanceof FallingBlock) {
                 int fallSteps = 0;
                 for (int step = 1; step <= 4; step++) {
-                    if (canPlaceAtGlobal16(world, gx, gy - step, gz, s.storedState, s.partId, false)) {
+                    if (canPlaceAtGlobal16(world, gx, gy - step, gz, s.storedState, s.yawDegrees, s.partId, false)) {
                         fallSteps = step;
                     } else {
                         break;
