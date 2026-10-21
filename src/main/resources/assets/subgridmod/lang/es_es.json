@@ -1,8 +1,0 @@
-{
-  "block.subgridmod.subgrid_container": "Bloque de Sub-Grid",
-  "block.subgridmod.subgrid_actuator": "Motor Lineal de Sub-Grid (Redstone)",
-  "item.subgridmod.precision_chisel": "Calibrador de Precisión de Sub-Grid 3D",
-  "key.subgridmod.grid_smaller": "Achicar Grid (1/1 -> 1/2 -> 1/4 -> 1/8 / Shift: Off-Grid)",
-  "key.subgridmod.grid_larger": "Agrandar Grid (Off-Grid -> 1/8 -> 1/4 -> 1/2 -> 1/1)",
-  "category.subgridmod.main": "Mod Sub-Grid & Off-Grid"
-}
