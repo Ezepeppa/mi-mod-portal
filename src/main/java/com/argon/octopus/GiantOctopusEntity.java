@@ -152,6 +152,20 @@ public class GiantOctopusEntity extends PathAwareEntity {
         return count;
     }
 
+    /**
+     * Inhibición lateral entre brazos vecinos (Nishii & Ikeda, AMAM 2019 / EPFL - Octopus sinensis):
+     * Evita que dos tentáculos contiguos (k-1 o k+1) se despeguen del sustrato al mismo tiempo,
+     * manteniendo un factor de soporte >= 70% y generando una onda metacrónica real.
+     */
+    public boolean isAdjacentNeighborCreeping(int limbIndex) {
+        int n = tentacles.size();
+        if (n < 3) return false;
+        int prevIdx = (limbIndex - 1 + n) % n;
+        int nextIdx = (limbIndex + 1) % n;
+        return tentacles.get(prevIdx).state == TentacleLimb.LimbState.SLIDING_CREEP
+                || tentacles.get(nextIdx).state == TentacleLimb.LimbState.SLIDING_CREEP;
+    }
+
     public void rebuildTentacleArray(int count) {
         int validCount = MathHelper.clamp(count, 4, 12);
         while (tentacles.size() < validCount) {

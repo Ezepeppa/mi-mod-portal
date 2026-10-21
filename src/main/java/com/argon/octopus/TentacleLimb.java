@@ -249,7 +249,7 @@ public class TentacleLimb {
             }
 
             if (this.state == LimbState.ANCHORED_PULL || this.state == LimbState.ANCHORED_PUSH) {
-                this.nodeSuctionLocked[i] = (i >= NUM_NODES - 5);
+                this.nodeSuctionLocked[i] = (i >= 8 && i <= 11);
             } else if (this.state == LimbState.SLIDING_CREEP) {
                 // Mientras se desliza a ras del suelo, solo las ventosas proximales/medias rozan el suelo
                 this.nodeSuctionLocked[i] = (i >= 4 && i <= 8 && creepProgress < 0.5f);
@@ -296,9 +296,11 @@ public class TentacleLimb {
 
         // Turno asíncrono escalonado (sucesión natural no simultánea entre los N tentáculos)
         int totalLimbs = Math.max(1, octopus.getTentacles().size());
-        int activePhaseSlot = (octopus.age / 5) % totalLimbs;
-        boolean isMyAsynchronousTurn = (activePhaseSlot == this.index)
-                || (((activePhaseSlot + totalLimbs / 2) % totalLimbs) == this.index && octopus.countCurrentlyCreepingLimbs() < 3);
+        int activePhaseSlot = (octopus.age / 4) % totalLimbs;
+        boolean neighborCreeping = octopus.isAdjacentNeighborCreeping(this.index);
+        boolean isMyAsynchronousTurn = !neighborCreeping
+                && octopus.countCurrentlyCreepingLimbs() < Math.max(2, totalLimbs / 3)
+                && ((activePhaseSlot == this.index) || (((activePhaseSlot + totalLimbs / 2) % totalLimbs) == this.index));
 
         if (this.state == LimbState.DANGLING_FREE) {
             this.pullTension = 0.0f;
@@ -572,11 +574,32 @@ public class TentacleLimb {
     private void applyStateConstraintsForSubStep(World world, GiantOctopusEntity octopus,
                                                  Vec3d rootSocket, Vec3d sectorDir, float segLen) {
         if (this.state == LimbState.ANCHORED_PULL || this.state == LimbState.ANCHORED_PUSH) {
-            this.nodes[NUM_NODES - 1] = this.anchorWorldPos;
-            this.nodes[NUM_NODES - 2] = this.nodes[NUM_NODES - 2].lerp(
-                    this.anchorWorldPos.subtract(sectorDir.multiply(segLen * 0.85)).add(this.anchorNormal.multiply(0.04)),
-                    0.55
+            // 1. Parche medial de ventosas (nodos 9, 10, 11) apoyado firmemente sobre el sustrato (Nature 2025 Light-Field Imaging & Current Biology)
+            this.nodes[10] = this.anchorWorldPos;
+            this.nodes[9] = this.nodes[9].lerp(
+                    this.anchorWorldPos.subtract(sectorDir.multiply(segLen * 0.90)).add(this.anchorNormal.multiply(0.03)),
+                    0.65
             );
+            this.nodes[11] = this.nodes[11].lerp(
+                    this.anchorWorldPos.add(sectorDir.multiply(segLen * 0.88)).add(this.anchorNormal.multiply(0.03)),
+                    0.65
+            );
+
+            // 2. Bisagra localizada de curvatura proximal-medial (nodos 4..6 - "localized curvature and strain", Nature 2025):
+            // Forma el característico arco muscular proximal cuando el pulpo empuja por elongación o tracciona por acortamiento!
+            double archHeight = (this.state == LimbState.ANCHORED_PUSH)
+                    ? (0.26 + 0.22 * this.pullTension)
+                    : (0.16 + 0.14 * (1.0 - this.pullTension));
+            Vec3d hingeTarget = rootSocket.lerp(this.anchorWorldPos, 0.42).add(0, archHeight, 0);
+            this.nodes[5] = this.nodes[5].lerp(hingeTarget, 0.32);
+
+            // 3. Punta distal táctil (nodos 12..13): se curva sutilmente hacia afuera/arriba tanteando el terreno adelante
+            double tipSweep = Math.sin(octopus.age * 0.18 + index) * 0.12;
+            Vec3d sideDir = new Vec3d(-sectorDir.z, 0, sectorDir.x);
+            Vec3d tip12 = this.anchorWorldPos.add(sectorDir.multiply(segLen * 1.75)).add(sideDir.multiply(tipSweep)).add(this.anchorNormal.multiply(0.08));
+            Vec3d tip13 = this.anchorWorldPos.add(sectorDir.multiply(segLen * 2.55)).add(sideDir.multiply(tipSweep * 1.6)).add(this.anchorNormal.multiply(0.18));
+            this.nodes[12] = this.nodes[12].lerp(tip12, 0.45);
+            this.nodes[13] = this.nodes[13].lerp(tip13, 0.45);
         } else if (this.state == LimbState.SLIDING_CREEP) {
             // DESLIZAMIENTO A RAS DEL SUELO: en vez de levantarse como pata de araña, la punta se arrastra por la superficie
             // con una elevación mínima (0.09 bloques en la punta) mientras una onda muscular baja recorre el brazo!
@@ -707,12 +730,20 @@ public class TentacleLimb {
 
     private void solveDistanceBendingAndSectorConstraints(Vec3d bodyPos, Vec3d rootSocket,
                                                            Vec3d sectorDir, float segLen, float stiffness) {
-        boolean pinTip = (this.state == LimbState.ANCHORED_PULL || this.state == LimbState.ANCHORED_PUSH);
+        boolean pinMedialPatch = (this.state == LimbState.ANCHORED_PULL || this.state == LimbState.ANCHORED_PUSH);
+
+        // Modulación de elongación/acortamiento proximal (Levy et al., Current Biology 2015: Pushing-by-Elongation & Pulling-by-Shortening)
+        float proximalStrainScale = 1.0f;
+        if (this.state == LimbState.ANCHORED_PUSH) {
+            proximalStrainScale = 1.0f + 0.18f * this.pullTension; // Elongación activa del tramo proximal para empujar el cuerpo
+        } else if (this.state == LimbState.ANCHORED_PULL) {
+            proximalStrainScale = 1.0f - 0.14f * this.pullTension; // Acortamiento activo del tramo proximal para traccionar el cuerpo
+        }
 
         for (int iter = 0; iter < 2; iter++) {
             this.nodes[0] = rootSocket;
-            if (pinTip) {
-                this.nodes[NUM_NODES - 1] = this.anchorWorldPos;
+            if (pinMedialPatch) {
+                this.nodes[10] = this.anchorWorldPos;
             }
             for (int i = 0; i < NUM_NODES - 1; i++) {
                 Vec3d p0 = this.nodes[i];
@@ -720,11 +751,14 @@ public class TentacleLimb {
                 Vec3d delta = p1.subtract(p0);
                 double d = delta.length();
                 if (d > 1e-5) {
-                    double diff = (d - segLen) / d;
+                    double targetSegLen = (i < 10) ? (segLen * proximalStrainScale) : segLen;
+                    double diff = (d - targetSegLen) / d;
                     if (i == 0) {
                         this.nodes[i + 1] = p1.subtract(delta.multiply(diff * 0.88));
-                    } else if (pinTip && i + 1 == NUM_NODES - 1) {
+                    } else if (pinMedialPatch && i + 1 == 10) {
                         this.nodes[i] = p0.add(delta.multiply(diff * 0.88));
+                    } else if (pinMedialPatch && i == 10) {
+                        this.nodes[i + 1] = p1.subtract(delta.multiply(diff * 0.88));
                     } else {
                         this.nodes[i] = p0.add(delta.multiply(diff * 0.46));
                         this.nodes[i + 1] = p1.subtract(delta.multiply(diff * 0.46));

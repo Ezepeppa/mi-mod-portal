@@ -295,15 +295,15 @@ public class GiantOctopusRenderer extends EntityRenderer<GiantOctopusEntity> {
     private void emitFaceQuadWithNormal(VertexConsumer vc, Matrix4f mat, Matrix3f normMat,
                                         Vec3d v1, Vec3d v2, Vec3d v3, Vec3d v4,
                                         float nx, float ny, float nz,
-                                        float u0, float v0, float u1, float v1,
+                                        float texU0, float texV0, float texU1, float texV1,
                                         int r, int g, int b, int light) {
-        vc.vertex(mat, (float) v1.x, (float) v1.y, (float) v1.z).color(r, g, b, 255).texture(u0, v0)
+        vc.vertex(mat, (float) v1.x, (float) v1.y, (float) v1.z).color(r, g, b, 255).texture(texU0, texV0)
                 .overlay(OverlayTexture.DEFAULT_UV).light(light).normal(normMat, nx, ny, nz).next();
-        vc.vertex(mat, (float) v2.x, (float) v2.y, (float) v2.z).color(r, g, b, 255).texture(u1, v0)
+        vc.vertex(mat, (float) v2.x, (float) v2.y, (float) v2.z).color(r, g, b, 255).texture(texU1, texV0)
                 .overlay(OverlayTexture.DEFAULT_UV).light(light).normal(normMat, nx, ny, nz).next();
-        vc.vertex(mat, (float) v3.x, (float) v3.y, (float) v3.z).color(r, g, b, 255).texture(u1, v1)
+        vc.vertex(mat, (float) v3.x, (float) v3.y, (float) v3.z).color(r, g, b, 255).texture(texU1, texV1)
                 .overlay(OverlayTexture.DEFAULT_UV).light(light).normal(normMat, nx, ny, nz).next();
-        vc.vertex(mat, (float) v4.x, (float) v4.y, (float) v4.z).color(r, g, b, 255).texture(u0, v1)
+        vc.vertex(mat, (float) v4.x, (float) v4.y, (float) v4.z).color(r, g, b, 255).texture(texU0, texV1)
                 .overlay(OverlayTexture.DEFAULT_UV).light(light).normal(normMat, nx, ny, nz).next();
     }
 
