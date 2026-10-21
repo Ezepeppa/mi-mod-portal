@@ -1,0 +1,9 @@
+{
+  "entity.octopusmod.giant_octopus": "Pulpo Terrestre Gigante (Física Procedural)",
+  "item.octopusmod.giant_octopus_spawn_egg": "Generar Pulpo Terrestre Gigante",
+  "item.octopusmod.octopus_controller": "Controlador Biomecánico y Showcase de Tentáculos",
+  "key.octopusmod.open_config": "Abrir Menú de Físicas del Pulpo (Sliders y Showcase)",
+  "key.octopusmod.tentacle_grab": "Agarrar / Lanzar Bloque o Mob con Tentáculo",
+  "key.octopusmod.tentacle_whip": "Latigazo Muscular de Tentáculos Frontales",
+  "category.octopusmod.main": "Mod Pulpo Terrestre (Físicas de Tentáculos)"
+}

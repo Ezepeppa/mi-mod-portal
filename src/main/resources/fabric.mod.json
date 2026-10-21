@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "octopusmod",
+  "version": "${version}",
+  "name": "Procedural Terrestrial Octopus Tentacle Physics Mod",
+  "description": "Mob terrestre gigante montable con locomocion 100% conducida por fisicas procedurales de tentaculos (XPBD/Verlet + FABRIK + ventosas + escalada + agarre de bloques/mobs), menu interactivo in-game y circuito Showcase guiado.",
+  "authors": [
+    "Creado con Argon"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.argon.octopus.OctopusMod"
+    ],
+    "client": [
+      "com.argon.octopus.OctopusClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.14.21",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*"
+  }
+}

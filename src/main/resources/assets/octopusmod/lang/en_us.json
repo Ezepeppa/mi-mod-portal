@@ -1,0 +1,9 @@
+{
+  "entity.octopusmod.giant_octopus": "Giant Terrestrial Octopus (Procedural Physics)",
+  "item.octopusmod.giant_octopus_spawn_egg": "Spawn Giant Terrestrial Octopus",
+  "item.octopusmod.octopus_controller": "Biomechanical Tentacle Controller & Showcase",
+  "key.octopusmod.open_config": "Open Octopus Physics Menu (Sliders & Showcase)",
+  "key.octopusmod.tentacle_grab": "Grab / Throw Block or Mob with Tentacle",
+  "key.octopusmod.tentacle_whip": "Front Tentacle Muscular Whip Strike",
+  "category.octopusmod.main": "Terrestrial Octopus Mod (Tentacle Physics)"
+}
