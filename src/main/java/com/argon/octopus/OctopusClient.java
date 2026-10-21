@@ -16,7 +16,7 @@ public class OctopusClient implements ClientModInitializer {
     private static KeyBinding openConfigKey;
     private static KeyBinding tentacleGrabKey;
     private static KeyBinding tentacleWhipKey;
-    private static boolean wasJumpPressed = false;
+    private static boolean wasSpacePressedRaw = false;
 
     @Override
     public void onInitializeClient() {
@@ -58,11 +58,17 @@ public class OctopusClient implements ClientModInitializer {
                 sendTentacleAction(2);
             }
 
-            boolean jumpNow = client.options.jumpKey.isPressed();
-            if (jumpNow && !wasJumpPressed && client.player.getVehicle() instanceof GiantOctopusEntity) {
-                sendTentacleAction(3);
+            // Lectura directa por hardware GLFW de la Barra Espaciadora para que funcione siempre aunque estés montado!
+            if (client.currentScreen == null && client.player.getVehicle() instanceof GiantOctopusEntity) {
+                long handle = client.getWindow().getHandle();
+                boolean spaceDown = InputUtil.isKeyPressed(handle, GLFW.GLFW_KEY_SPACE);
+                if (spaceDown && !wasSpacePressedRaw) {
+                    sendTentacleAction(3);
+                }
+                wasSpacePressedRaw = spaceDown;
+            } else {
+                wasSpacePressedRaw = false;
             }
-            wasJumpPressed = jumpNow;
         });
     }
 

@@ -3,7 +3,7 @@
   "id": "octopusmod",
   "version": "${version}",
   "name": "Procedural Terrestrial Octopus Tentacle Physics Mod",
-  "description": "Mob terrestre gigante montable con locomocion 100% conducida por fisicas procedurales de tentaculos (XPBD/Verlet + FABRIK + ventosas + escalada + agarre de bloques/mobs), menu interactivo in-game y circuito Showcase guiado.",
+  "description": "v2.0.0: Locomocion real donde primero se arrastran los tentaculos en sucesion asincrona y luego tiran del cuerpo pesado, colision entre tentaculos, inclinacion 3D del cuerpo, natacion acuatica, agarre/lanzamiento con inercia y sombreado 3D profundo.",
   "authors": [
     "Creado con Argon"
   ],

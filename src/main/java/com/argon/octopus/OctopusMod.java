@@ -22,7 +22,6 @@ public class OctopusMod implements ModInitializer {
     public static final String MOD_ID = "octopusmod";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
-    // Paquetes C2S para sincronizar el menú de configuración in-game, las acciones de los tentáculos y el Showcase
     public static final Identifier SYNC_CONFIG_PACKET = new Identifier(MOD_ID, "sync_config");
     public static final Identifier TENTACLE_ACTION_PACKET = new Identifier(MOD_ID, "tentacle_action");
     public static final Identifier START_SHOWCASE_PACKET = new Identifier(MOD_ID, "start_showcase");
@@ -31,7 +30,7 @@ public class OctopusMod implements ModInitializer {
             Registries.ENTITY_TYPE,
             new Identifier(MOD_ID, "giant_octopus"),
             FabricEntityTypeBuilder.create(SpawnGroup.CREATURE, GiantOctopusEntity::new)
-                    .dimensions(EntityDimensions.changing(1.9f, 1.35f))
+                    .dimensions(EntityDimensions.changing(1.8f, 1.25f))
                     .trackRangeBlocks(96)
                     .trackedUpdateRate(1)
                     .build()
@@ -62,7 +61,6 @@ public class OctopusMod implements ModInitializer {
             entries.add(GIANT_OCTOPUS_SPAWN_EGG);
         });
 
-        // Recibir cambios de sliders en tiempo real desde el menú interactivo del jugador
         ServerPlayNetworking.registerGlobalReceiver(SYNC_CONFIG_PACKET, (server, player, handler, buf, responseSender) -> {
             int count = buf.readInt();
             float length = buf.readFloat();
@@ -80,7 +78,6 @@ public class OctopusMod implements ModInitializer {
                 OctopusPhysicsConfig.wallClimbingEnabled = climb;
                 OctopusPhysicsConfig.showDebugPhysicsVectors = debug;
 
-                // Actualizar todos los pulpos cercanos al jugador en el servidor
                 player.getServerWorld().getEntitiesByType(
                         GIANT_OCTOPUS,
                         player.getBoundingBox().expand(64.0),
@@ -89,14 +86,12 @@ public class OctopusMod implements ModInitializer {
             });
         });
 
-        // Recibir acciones activas de tentáculos (1 = Agarrar/Lanzar bloque o mob, 2 = Latigazo frontal, 3 = Impulso elástico)
         ServerPlayNetworking.registerGlobalReceiver(TENTACLE_ACTION_PACKET, (server, player, handler, buf, responseSender) -> {
             int actionType = buf.readInt();
             server.execute(() -> {
                 if (player.getVehicle() instanceof GiantOctopusEntity octopus) {
                     octopus.performRiderTentacleAction(player, actionType);
                 } else {
-                    // También permite comandar al pulpo más cercano si sostiene el controlador
                     player.getServerWorld().getEntitiesByType(
                             GIANT_OCTOPUS,
                             player.getBoundingBox().expand(18.0),
@@ -106,12 +101,11 @@ public class OctopusMod implements ModInitializer {
             });
         });
 
-        // Construir y lanzar el Circuito Showcase / Demo Guiado
         ServerPlayNetworking.registerGlobalReceiver(START_SHOWCASE_PACKET, (server, player, handler, buf, responseSender) -> {
             int stage = buf.readInt();
             server.execute(() -> OctopusShowcaseManager.startOrAdvanceShowcase(player, stage));
         });
 
-        LOGGER.info("Mod Giant Terrestrial Octopus (Procedural Tentacle Physics) cargado correctamente.");
+        LOGGER.info("Mod Giant Terrestrial Octopus v2.0.0 cargado correctamente.");
     }
 }

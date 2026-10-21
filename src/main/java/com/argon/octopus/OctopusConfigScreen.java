@@ -9,14 +9,9 @@ import net.minecraft.network.PacketByteBuf;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
-/**
- * Menú Interactivo In-Game (abierto con la tecla `O` o con el Controlador Biomecánico)
- * que permite modificar en tiempo real todos los parámetros físicos de los tentáculos
- * y lanzar el Circuito Showcase / Demo Guiado con 1 clic.
- */
 public class OctopusConfigScreen extends Screen {
     public OctopusConfigScreen() {
-        super(Text.literal("Panel de Físicas Biomecánicas — Pulpo Terrestre"));
+        super(Text.literal("Panel de Físicas Biomecánicas v2.0.0 — Pulpo Terrestre"));
     }
 
     @Override
@@ -27,7 +22,6 @@ public class OctopusConfigScreen extends Screen {
         int btnW = 260;
         int btnH = 20;
 
-        // 1. Cantidad de Tentáculos (4, 6, 8, 10, 12)
         this.addDrawableChild(ButtonWidget.builder(getTentacleCountText(), btn -> {
             int next = OctopusPhysicsConfig.tentacleCount + 2;
             if (next > 12) next = 4;
@@ -36,7 +30,6 @@ public class OctopusConfigScreen extends Screen {
             syncConfigToServer();
         }).dimensions(cx - btnW / 2, startY, btnW, btnH).build());
 
-        // 2. Longitud de Tentáculos (4.5m -> 6.5m -> 8.5m -> 10.5m)
         this.addDrawableChild(ButtonWidget.builder(getLengthText(), btn -> {
             float next = OctopusPhysicsConfig.tentacleLength + 2.0f;
             if (next > 11.0f) next = 4.5f;
@@ -45,7 +38,6 @@ public class OctopusConfigScreen extends Screen {
             syncConfigToServer();
         }).dimensions(cx - btnW / 2, startY + 24, btnW, btnH).build());
 
-        // 3. Fuerza de Tracción Muscular y Ventosas
         this.addDrawableChild(ButtonWidget.builder(getPullStrengthText(), btn -> {
             float next = OctopusPhysicsConfig.suctionPullStrength + 0.4f;
             if (next > 2.3f) next = 0.65f;
@@ -54,7 +46,6 @@ public class OctopusConfigScreen extends Screen {
             syncConfigToServer();
         }).dimensions(cx - btnW / 2, startY + 48, btnW, btnH).build());
 
-        // 4. Peso Corporal / Gravedad fuera del agua ("Slump")
         this.addDrawableChild(ButtonWidget.builder(getGravityText(), btn -> {
             float next = OctopusPhysicsConfig.gravitySlumpFactor + 0.45f;
             if (next > 2.0f) next = 0.55f;
@@ -63,7 +54,6 @@ public class OctopusConfigScreen extends Screen {
             syncConfigToServer();
         }).dimensions(cx - btnW / 2, startY + 72, btnW, btnH).build());
 
-        // 5. Rigidez del Hidrostato Muscular
         this.addDrawableChild(ButtonWidget.builder(getStiffnessText(), btn -> {
             float next = OctopusPhysicsConfig.hydrostatStiffness + 0.4f;
             if (next > 1.85f) next = 0.4f;
@@ -72,21 +62,18 @@ public class OctopusConfigScreen extends Screen {
             syncConfigToServer();
         }).dimensions(cx - btnW / 2, startY + 96, btnW, btnH).build());
 
-        // 6. Escalada Vertical de Paredes con Ventosas (ON / OFF)
         this.addDrawableChild(ButtonWidget.builder(getClimbText(), btn -> {
             OctopusPhysicsConfig.wallClimbingEnabled = !OctopusPhysicsConfig.wallClimbingEnabled;
             btn.setMessage(getClimbText());
             syncConfigToServer();
         }).dimensions(cx - btnW / 2, startY + 120, btnW, btnH).build());
 
-        // 7. Vista Rayos-X de Debug Físico (Nodos Verlet + Puntos de Succión)
         this.addDrawableChild(ButtonWidget.builder(getDebugText(), btn -> {
             OctopusPhysicsConfig.showDebugPhysicsVectors = !OctopusPhysicsConfig.showDebugPhysicsVectors;
             btn.setMessage(getDebugText());
             syncConfigToServer();
         }).dimensions(cx - btnW / 2, startY + 144, btnW, btnH).build());
 
-        // 8. Botón Destacado: Construir y Lanzar el Circuito Showcase / Demo Guiado
         this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("★ Iniciar Circuito Showcase / Demo Guiado ★").formatted(Formatting.GOLD, Formatting.BOLD),
                 btn -> {
@@ -152,7 +139,7 @@ public class OctopusConfigScreen extends Screen {
         this.renderBackground(context);
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 16, 0xFFCC44);
         context.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("Controles montado: WASD = Arrastrarse/Trepar | R = Agarrar/Lanzar con Tentáculo | G = Latigazo | Espacio = Impulso")
+                Text.literal("WASD = Arrastrarse/Nadar | R = Agarrar/Lanzar con Inercia | G = Latigazo | Espacio = Impulso | Shift+Clic = Quedarse/Seguir")
                         .formatted(Formatting.GRAY),
                 this.width / 2, 28, 0xAAAAAA);
         super.render(context, mouseX, mouseY, delta);
